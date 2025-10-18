@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cp \"C:\\Users\\candi\\OneDrive\\Desktop\\Federated-Learning\\template\\cls.tex\" \"C:\\Users\\candi\\OneDrive\\Desktop\\Federated-Learning\\doc\\tcc.cls\")"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}

@@ -4,8 +4,7 @@ Este módulo define dataclasses de configuração para definições de experimen
 e comportamento de logging.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass

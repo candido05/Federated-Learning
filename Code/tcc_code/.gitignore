@@ -154,3 +154,7 @@ data/processed/
 # Model checkpoints
 checkpoints/
 models/saved/
+
+
+METRICS_LOGGING.md
+test_utils.py
