@@ -1,0 +1,191 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TCC %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Template para TCC da Universidade Federal da Paraíba
+%
+% Adaptado para o projeto de Federated Learning com SDN
+% Autor: Cândido Leandro de Queiroga Bisneto
+% Orientador: Fernando Menezes Matos
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass{tcc}
+
+\begin{document}
+\pagestyle{empty} %retira numeração da página
+\input{dados_tcc}
+
+% CAPA
+\begin{center}
+\LARGE{\bf \thetitle}\\
+\end{center}
+
+\vspace{1em}
+
+\begin{center}
+\theauthor
+\end{center}
+
+\vfill
+
+\begin{figure}[H]
+\centering
+\includegraphics[height=3cm]{figures/ci_logo.png}
+\hspace{1cm}
+\includegraphics[height=3cm]{figures/ufpb_logo.png}
+\end{figure}
+
+\begin{center}
+CENTRO DE INFORMÁTICA \\
+UNIVERSIDADE FEDERAL DA PARAÍBA
+\end{center}
+
+\vspace{2in}
+
+\begin{center}
+João Pessoa, 2025
+\end{center}
+\afterpage{\blankpage \addtocounter{page}{1}}
+
+% FOLHA DE ROSTO
+\newpage
+\begin{center}
+\theauthor
+\end{center}
+\vspace{3in}
+\begin{center}
+\LARGE{\thetitle}\\
+\end{center}
+
+\vspace{2in}
+
+\begin{flushright}
+Monografia apresentada ao curso \nomedocurso \\ do Centro de Informática, da Universidade Federal da Paraíba, \\ como requisito para a obtenção do grau de Bacharel em \titulobar
+\\
+\vspace{0.2in}
+
+Orientador: \orientador
+
+\end{flushright}
+
+\vfill
+\begin{center}
+Dezembro de 2025
+\end{center}
+
+\newpage
+
+% PÁGINA EM BRANCO (para ficha catalográfica no verso)
+$ $
+\vfill
+
+\newpage
+
+% PÁGINA DE APROVAÇÃO
+\begin{figure}[H]
+\centering
+\includegraphics[height=3cm]{figures/ci_logo.png}
+\hspace{1cm}
+\includegraphics[height=3cm]{figures/ufpb_logo.png}
+\end{figure}
+
+\begin{center}
+CENTRO DE INFORMÁTICA \\
+UNIVERSIDADE FEDERAL DA PARAÍBA
+\end{center}
+
+\vspace{0.05in}
+
+Trabalho de Conclusão de Curso de \nomedocurso \ intitulado \textit{\bf \em \thetitle} de autoria de \theauthor, aprovada pela banca examinadora constituída pelos seguintes professores: \\
+
+\vspace{0.7in}
+
+\hrule
+\noindent Prof. Dr. \profa\\
+\insta\\
+
+\vspace{0.25in}
+
+\hrule
+\noindent Prof. \profb\\
+\instb\\
+
+\vspace{0.25in}
+
+\hrule
+\noindent Prof. \profc\\
+\instc\\
+
+\vspace{0.8in}
+
+\hrule
+\noindent Coordenador(a) do Curso de \departamento\\
+\coordenador\\
+CI/UFPB\\
+
+\vfill
+
+\begin{center}
+João Pessoa, Dezembro de 2025
+\end{center}
+
+\afterpage{\blankpage \addtocounter{page}{1}}
+
+% DEDICATÓRIA
+\newpage
+\section*{\centering{DEDICATÓRIA}}
+\input{pre_textual/a_dedicatoria}
+
+% AGRADECIMENTOS
+\newpage
+\input{pre_textual/b_agradecimentos}
+
+% RESUMO
+\newpage
+\input{pre_textual/c_resumo}
+
+% ABSTRACT
+\newpage
+\input{pre_textual/d_abstract}
+
+% LISTA DE FIGURAS
+\newpage
+\renewcommand{\listfigurename}{\centering LISTA DE FIGURAS}
+\listoffigures
+
+% LISTA DE TABELAS
+\newpage
+\renewcommand{\listtablename}{\centering LISTA DE TABELAS}
+\listoftables
+
+% LISTA DE ABREVIATURAS
+\newpage
+\input{pre_textual/e_abreviaturas}
+
+% SUMÁRIO
+\newpage
+\pagestyle{plain} %mostra numeração da página%
+\tableofcontents
+
+% CAPÍTULOS
+\newpage
+\input{chapters/01_introducao}
+\input{chapters/02_revisao_literatura}
+\input{chapters/03_fundamentos_teoricos}
+\input{chapters/04_metodologia}
+\input{chapters/05_dataset}
+\input{chapters/06_config_experimental}
+\input{chapters/07_resultados}
+\input{chapters/08_discussao}
+\input{chapters/09_conclusao}
+
+% REFERÊNCIAS
+\renewcommand{\refname}{\centering REFERÊNCIAS}
+\addcontentsline{toc}{section}{REFERÊNCIAS}
+\begin{thebibliography}{99}
+\input{references}
+\end{thebibliography}
+
+% ANEXOS
+\input{anexos}
+
+\end{document}
