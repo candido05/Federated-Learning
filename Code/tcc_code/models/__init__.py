@@ -4,4 +4,8 @@ Este módulo contém wrappers e implementações para modelos baseados em árvor
 (XGBoost, LightGBM, CatBoost) adaptados para aprendizado federado.
 """
 
-__all__ = []
+from .base_client import BaseFLClient
+
+__all__ = [
+    "BaseFLClient",
+]
