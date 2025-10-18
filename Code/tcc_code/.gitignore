@@ -155,6 +155,6 @@ data/processed/
 checkpoints/
 models/saved/
 
-test_utils.py
-
 mds_folder/
+
+test/

@@ -5,7 +5,6 @@ Implementa agregação estilo bagging onde todos (ou fração) dos clientes
 treinam em paralelo e modelos são agregados.
 """
 
-import random
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from logging import INFO
 
@@ -19,8 +18,6 @@ from flwr.common import (
     Parameters,
     Scalar,
     NDArrays,
-    parameters_to_ndarrays,
-    ndarrays_to_parameters,
 )
 
 from .base_strategy import BaseStrategy

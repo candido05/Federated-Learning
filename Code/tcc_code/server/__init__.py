@@ -1,7 +1,13 @@
-"""Módulo do servidor de Aprendizado Federado.
+"""
+Módulo do servidor Federated Learning.
 
-Este módulo contém a implementação do servidor FL, incluindo
-lógica de coordenação, gerenciamento de clientes e agregação.
+Exporta gerenciador de servidor e funções de avaliação.
 """
 
-__all__ = []
+from .server_manager import FederatedServer
+from .evaluation import get_evaluate_fn
+
+__all__ = [
+    'FederatedServer',
+    'get_evaluate_fn',
+]

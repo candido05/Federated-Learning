@@ -40,7 +40,6 @@ class FedCyclic(BaseStrategy):
         self,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
-        min_fit_clients: int = 1,  # Cyclic sempre usa 1 cliente
         min_evaluate_clients: int = 1,
         min_available_clients: int = 1,
         evaluate_fn: Optional[
@@ -61,7 +60,7 @@ class FedCyclic(BaseStrategy):
 
         Args:
             Veja BaseStrategy para documentação dos parâmetros.
-            Nota: min_fit_clients será forçado para 1.
+            Nota: min_fit_clients é sempre forçado para 1 (cyclic).
         """
         # Força min_fit_clients = 1 para estratégia cíclica
         super().__init__(
