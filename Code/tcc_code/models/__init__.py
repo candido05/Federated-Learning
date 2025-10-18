@@ -1,11 +1,17 @@
-"""Implementações de modelos para Aprendizado Federado.
+"""
+Módulo de modelos para Federated Learning.
 
-Este módulo contém wrappers e implementações para modelos baseados em árvores
-(XGBoost, LightGBM, CatBoost) adaptados para aprendizado federado.
+Exporta classes base e clientes específicos para cada framework.
 """
 
 from .base_client import BaseFLClient
+from .xgboost_client import XGBoostClient
+from .catboost_client import CatBoostClient
+from .lightgbm_client import LightGBMClient
 
 __all__ = [
-    "BaseFLClient",
+    'BaseFLClient',
+    'XGBoostClient',
+    'CatBoostClient',
+    'LightGBMClient',
 ]
