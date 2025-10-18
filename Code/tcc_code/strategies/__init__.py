@@ -1,7 +1,15 @@
-"""Módulo de estratégias de Aprendizado Federado.
+"""
+Módulo de estratégias de agregação para Federated Learning.
 
-Este módulo contém implementações de várias estratégias de agregação FL
-incluindo FedAvg, FedProx, FedAdam e estratégias customizadas.
+Exporta classe base e estratégias específicas.
 """
 
-__all__ = []
+from .base_strategy import BaseStrategy
+from .bagging_strategy import FedBagging
+from .cyclic_strategy import FedCyclic
+
+__all__ = [
+    'BaseStrategy',
+    'FedBagging',
+    'FedCyclic',
+]
