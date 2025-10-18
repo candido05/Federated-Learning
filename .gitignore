@@ -175,4 +175,5 @@ cython_debug/
 
 # Claude Code configuration
 CLAUDE.md
+.claude/
 template/

@@ -242,27 +242,4 @@ grep "<<" chapters/05_dataset.tex | wc -l  # Contar no Capítulo 5
 
 ---
 
-## 📝 Licença
-
-Este projeto é desenvolvido para fins acadêmicos como parte do Trabalho de Conclusão de Curso do Centro de Informática da UFPB.
-
----
-
-## 📧 Contato
-
-Para dúvidas sobre o projeto:
-- **Autor**: Cândido Leandro de Queiroga Bisneto
-- **Instituição**: Centro de Informática - UFPB
-- **Orientador**: Prof. Fernando Menezes Matos
-
----
-
-## 🙏 Agradecimentos
-
-- Centro de Informática da UFPB
-- Flower Framework Community
-- Comunidades de código aberto XGBoost, LightGBM e CatBoost
-
----
-
 **Última atualização**: Outubro/2025
