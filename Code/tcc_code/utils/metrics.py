@@ -5,7 +5,7 @@ de classificação incluindo acurácia, precisão, recall, F1-score, AUC e matri
 """
 
 import json
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from sklearn.metrics import (
@@ -38,9 +38,10 @@ class MetricsCalculator:
             Dicionário contendo:
                 - accuracy: Acurácia de classificação
                 - precision: Precisão (macro-averaged para multiclasse)
-                - recall: Recall (macro-averaged para multiclasse)
+                - recall: Recall (sensibilidade, macro-averaged para multiclasse)
                 - f1_score: F1-score (macro-averaged para multiclasse)
                 - auc: Area Under the ROC Curve
+                - specificity: Especificidade (apenas para binário)
                 - confusion_matrix: Dicionário com tn, fp, fn, tp (binário) ou matriz completa (multiclasse)
         """
         # Converte para numpy arrays se necessário
@@ -71,10 +72,15 @@ class MetricsCalculator:
                 # Se houver apenas uma classe nos dados, AUC não pode ser calculado
                 auc_score = 0.0
 
-            # Calcula matriz de confusão
+            # Calcula matriz de confusão e especificidade
             cm = confusion_matrix(y_true, y_pred)
             if cm.shape == (2, 2):
                 tn, fp, fn, tp = cm.ravel()
+
+                # Calcula especificidade (True Negative Rate)
+                # Specificity = TN / (TN + FP)
+                specificity = float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0
+
                 confusion_matrix_dict = {
                     "tn": int(tn),
                     "fp": int(fp),
@@ -83,6 +89,7 @@ class MetricsCalculator:
                 }
             else:
                 # Caso tenha apenas uma classe nas predições
+                specificity = 0.0
                 confusion_matrix_dict = {
                     "tn": 0,
                     "fp": 0,
@@ -111,12 +118,17 @@ class MetricsCalculator:
             cm = confusion_matrix(y_true, y_pred)
             confusion_matrix_dict = {"matrix": cm.tolist()}
 
+            # Specificity não é aplicável diretamente em multiclasse
+            # Pode-se calcular macro-averaged specificity, mas fica para futura implementação
+            specificity = None
+
         return {
             "accuracy": accuracy,
             "precision": precision,
             "recall": recall,
             "f1_score": f1,
             "auc": auc_score,
+            "specificity": specificity,  # None para multiclasse, float para binário
             "confusion_matrix": confusion_matrix_dict,
         }
 
@@ -134,15 +146,17 @@ class MetricsCalculator:
 
         # Métricas principais
         if "accuracy" in metrics:
-            print(f"{prefix}Acurácia:     {metrics['accuracy']:.4f}")
+            print(f"{prefix}Acurácia:       {metrics['accuracy']:.4f}")
         if "precision" in metrics:
-            print(f"{prefix}Precisão:     {metrics['precision']:.4f}")
+            print(f"{prefix}Precisão:       {metrics['precision']:.4f}")
         if "recall" in metrics:
-            print(f"{prefix}Recall:       {metrics['recall']:.4f}")
+            print(f"{prefix}Recall:         {metrics['recall']:.4f}")
+        if "specificity" in metrics and metrics["specificity"] is not None:
+            print(f"{prefix}Especificidade: {metrics['specificity']:.4f}")
         if "f1_score" in metrics:
-            print(f"{prefix}F1-Score:     {metrics['f1_score']:.4f}")
+            print(f"{prefix}F1-Score:       {metrics['f1_score']:.4f}")
         if "auc" in metrics:
-            print(f"{prefix}AUC:          {metrics['auc']:.4f}")
+            print(f"{prefix}AUC:            {metrics['auc']:.4f}")
 
         # Matriz de confusão
         if "confusion_matrix" in metrics:
@@ -206,6 +220,125 @@ class MetricsCalculator:
             json.dump(serializable_metrics, f, indent=2, ensure_ascii=False)
 
     @staticmethod
+    def save_history_to_json(
+        history: Dict[str, Any],
+        filepath: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Salva histórico de métricas de FL em arquivo JSON formatado.
+
+        Args:
+            history: Histórico de métricas do Flower (ou dicionário customizado).
+            filepath: Caminho para o arquivo de saída.
+            metadata: Metadados adicionais do experimento (modelo, estratégia, etc.).
+
+        Example:
+            >>> save_history_to_json(
+            ...     history={"losses": [...], "metrics": [...]},
+            ...     filepath="results/experiment_001.json",
+            ...     metadata={"model": "xgboost", "strategy": "bagging"}
+            ... )
+        """
+        output = {}
+
+        # Adiciona metadados se fornecidos
+        if metadata:
+            output["metadata"] = metadata
+
+        # Adiciona histórico
+        output["history"] = MetricsCalculator.metrics_to_json(history)
+
+        # Salva em JSON
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2, ensure_ascii=False)
+
+    @staticmethod
+    def print_final_analysis(
+        strategy_name: str,
+        metrics_history: Dict[str, Any],
+        num_rounds: Optional[int] = None,
+    ) -> None:
+        """Imprime análise final formatada do experimento FL.
+
+        Args:
+            strategy_name: Nome da estratégia usada (ex: "FedBagging", "FedCyclic").
+            metrics_history: Histórico de métricas por round.
+            num_rounds: Número total de rounds (opcional, inferido do histórico se None).
+
+        Example:
+            >>> metrics_history = {
+            ...     "losses": [0.5, 0.4, 0.3],
+            ...     "metrics": [
+            ...         {"accuracy": 0.80, "f1_score": 0.78},
+            ...         {"accuracy": 0.85, "f1_score": 0.83},
+            ...         {"accuracy": 0.90, "f1_score": 0.88},
+            ...     ]
+            ... }
+            >>> print_final_analysis("FedBagging", metrics_history)
+        """
+        print("\n" + "=" * 80)
+        print(f"ANÁLISE FINAL - Estratégia: {strategy_name}")
+        print("=" * 80)
+
+        # Infere número de rounds se não fornecido
+        if num_rounds is None:
+            if "losses" in metrics_history:
+                num_rounds = len(metrics_history["losses"])
+            elif "metrics" in metrics_history:
+                num_rounds = len(metrics_history["metrics"])
+            else:
+                num_rounds = 0
+
+        print(f"\nNúmero de Rounds: {num_rounds}")
+
+        # Análise de Loss (se disponível)
+        if "losses" in metrics_history and metrics_history["losses"]:
+            losses = metrics_history["losses"]
+            print("\n" + "-" * 80)
+            print("EVOLUÇÃO DO LOSS:")
+            print(f"  Loss Inicial (Round 1):  {losses[0]:.6f}")
+            print(f"  Loss Final (Round {len(losses)}):    {losses[-1]:.6f}")
+            print(f"  Redução Total:           {losses[0] - losses[-1]:.6f} ({(1 - losses[-1]/losses[0])*100:.2f}%)")
+            print(f"  Loss Mínimo:             {min(losses):.6f} (Round {losses.index(min(losses)) + 1})")
+
+        # Análise de Métricas (se disponível)
+        if "metrics" in metrics_history and metrics_history["metrics"]:
+            metrics_list = metrics_history["metrics"]
+
+            print("\n" + "-" * 80)
+            print("EVOLUÇÃO DAS MÉTRICAS:")
+
+            # Extrai métricas numéricas
+            metric_names = ["accuracy", "precision", "recall", "f1_score", "auc", "specificity"]
+
+            for metric_name in metric_names:
+                # Coleta valores válidos
+                values = []
+                for m in metrics_list:
+                    if isinstance(m, dict) and metric_name in m:
+                        val = m[metric_name]
+                        if val is not None:
+                            values.append(val)
+
+                if values:
+                    print(f"\n  {metric_name.upper().replace('_', ' ')}:")
+                    print(f"    Inicial: {values[0]:.4f}")
+                    print(f"    Final:   {values[-1]:.4f}")
+                    print(f"    Melhoria: {(values[-1] - values[0]):.4f} ({((values[-1] - values[0])/values[0])*100:+.2f}%)")
+                    print(f"    Máximo:  {max(values):.4f} (Round {values.index(max(values)) + 1})")
+
+        # Resumo Final
+        print("\n" + "=" * 80)
+        if "metrics" in metrics_history and metrics_history["metrics"]:
+            final_metrics = metrics_history["metrics"][-1]
+            print("MÉTRICAS FINAIS:")
+            if isinstance(final_metrics, dict):
+                for key, value in sorted(final_metrics.items()):
+                    if isinstance(value, (int, float)) and value is not None:
+                        print(f"  {key}: {value:.4f}")
+        print("=" * 80 + "\n")
+
+    @staticmethod
     def calculate_aggregated_metrics(
         metrics_list: list[Dict[str, Any]]
     ) -> Dict[str, Union[float, Dict[str, float]]]:
@@ -220,12 +353,16 @@ class MetricsCalculator:
         if not metrics_list:
             return {}
 
-        # Identifica métricas numéricas
-        numeric_keys = ["accuracy", "precision", "recall", "f1_score", "auc"]
+        # Identifica métricas numéricas (incluindo specificity)
+        numeric_keys = ["accuracy", "precision", "recall", "f1_score", "auc", "specificity"]
         aggregated = {}
 
         for key in numeric_keys:
-            values = [m[key] for m in metrics_list if key in m and isinstance(m[key], (int, float))]
+            # Filtra valores None para specificity (pode ser None em multiclasse)
+            values = [
+                m[key] for m in metrics_list
+                if key in m and m[key] is not None and isinstance(m[key], (int, float))
+            ]
 
             if values:
                 aggregated[key] = {

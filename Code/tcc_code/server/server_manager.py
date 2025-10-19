@@ -6,6 +6,7 @@ Coordena experimentos FL, incluindo setup, criação de estratégias e execuçã
 
 import logging
 from typing import Dict, Optional, Any, Callable
+from flwr.common.typing import Scalar
 
 from flwr.server import ServerConfig
 
@@ -60,7 +61,7 @@ class FederatedServer:
         self.current_strategy_type: Optional[str] = None
 
         self.logger.info("Servidor Federado inicializado")
-        self.logger.info(f"Configuração: {config.num_clients} clientes, {config.num_rounds} rounds")
+        self.logger.info(f"Configuração: {config.num_clients} clientes, {config.num_server_rounds} rounds")
 
     def setup_experiment(
         self,
@@ -100,12 +101,14 @@ class FederatedServer:
 
         # Configura logger de experimento
         self.experiment_logger = ExperimentLogger(
-            experiment_name=f"{model_type}_{strategy_type}",
             model_name=model_type,
             strategy_name=strategy_type,
-            num_clients=self.config.num_clients,
-            base_dir=self.logging_config.base_dir,
+            config=self.config,
+            base_log_dir=self.logging_config.log_dir,
         )
+
+        # Cria estrutura de diretórios para logs
+        self.experiment_logger.setup_directories()
 
         self.experiment_logger.logger.info(
             f"Experimento configurado: {model_type} + {strategy_type}"
@@ -119,11 +122,125 @@ class FederatedServer:
             dataset_source=dataset_source,
         )
 
+        # Valida se dataset foi carregado com sucesso
+        if self.dataset is None:
+            raise ValueError(
+                f"Falha ao carregar dataset '{dataset_source}'. "
+                "Verifique se o nome do dataset está correto."
+            )
+
         self.dataset.prepare()
+
+        # Valida se dados foram preparados corretamente
+        if not hasattr(self.dataset, 'X_train') or self.dataset.X_train is None:
+            raise ValueError("Dataset não possui dados de treino após prepare()")
+
         self.experiment_logger.logger.info(
             f"Dataset carregado: {len(self.dataset.X_train)} amostras de treino, "
             f"{len(self.dataset.X_test)} amostras de teste"
         )
+
+    def _get_fit_config(self, server_round: int) -> Dict[str, Scalar]:
+        """
+        Cria configuração de treinamento para cada round.
+
+        Esta função é chamada pelo servidor no início de cada round de treinamento
+        para enviar parâmetros aos clientes (como global_round, num_local_boost_round).
+
+        Args:
+            server_round: Número do round atual (1-indexed).
+
+        Returns:
+            Dicionário com configurações para clientes:
+            - global_round: Round atual para controle de lógica de treinamento
+            - num_local_boost_round: Número de rounds locais de boosting
+
+        Note:
+            Clientes usam global_round para decidir se treinam do zero (round 1)
+            ou continuam do modelo global (rounds 2+).
+        """
+        return {
+            "global_round": server_round,
+            "num_local_boost_round": self.config.num_local_boost_round,
+        }
+
+    def _create_metrics_aggregation_fn(self) -> Callable:
+        """
+        Cria função de agregação customizada para métricas de avaliação.
+
+        A função retornada agrega métricas de múltiplos clientes usando
+        média ponderada pelo número de exemplos de cada cliente.
+
+        Returns:
+            Função que recebe lista de (num_examples, metrics) e retorna
+            dicionário com métricas agregadas.
+
+        Note:
+            Métricas agregadas incluem: accuracy, precision, recall, f1_score,
+            auc e specificity (quando disponível).
+        """
+        def aggregate_evaluate_metrics(
+            eval_metrics: List[Tuple[int, Dict[str, Scalar]]]
+        ) -> Dict[str, Scalar]:
+            """
+            Agrega métricas de avaliação de múltiplos clientes.
+
+            Calcula média ponderada de métricas usando número de exemplos
+            de cada cliente como peso.
+
+            Args:
+                eval_metrics: Lista de tuplas (num_examples, metrics_dict)
+                             onde cada tupla representa resultados de um cliente.
+
+            Returns:
+                Dicionário com métricas agregadas (média ponderada).
+            """
+            if not eval_metrics:
+                return {}
+
+            # Calcula total de exemplos
+            total_examples = sum(num for num, _ in eval_metrics)
+
+            if total_examples == 0:
+                self.logger.warning("Total de exemplos é zero na agregação de métricas")
+                return {}
+
+            # Lista de métricas a agregar
+            metrics_to_aggregate = [
+                'accuracy',
+                'precision',
+                'recall',
+                'f1_score',
+                'auc',
+                'specificity',
+            ]
+
+            aggregated = {}
+
+            for metric_name in metrics_to_aggregate:
+                # Coleta valores válidos (não-None) da métrica
+                weighted_sum = 0.0
+                total_weight = 0
+
+                for num_examples, metrics in eval_metrics:
+                    if metric_name in metrics:
+                        value = metrics[metric_name]
+                        # Specificity pode ser None para multiclasse
+                        if value is not None:
+                            weighted_sum += num_examples * float(value)
+                            total_weight += num_examples
+
+                # Calcula média ponderada se houver valores válidos
+                if total_weight > 0:
+                    aggregated[metric_name] = weighted_sum / total_weight
+
+            # Adiciona informações sobre agregação
+            aggregated["num_clients_evaluated"] = len(eval_metrics)
+            aggregated["total_examples_evaluated"] = total_examples
+
+            return aggregated
+
+        return aggregate_evaluate_metrics
 
     def create_strategy(
         self,
@@ -158,6 +275,8 @@ class FederatedServer:
                 min_evaluate_clients=params.get('min_evaluate_clients', 2),
                 min_available_clients=params.get('min_available_clients', self.config.num_clients),
                 evaluate_fn=evaluate_fn,
+                evaluate_metrics_aggregation_fn=self._create_metrics_aggregation_fn(),
+                on_fit_config_fn=self._get_fit_config,
             )
 
         elif strategy_type.lower() == 'cyclic':
@@ -166,6 +285,8 @@ class FederatedServer:
                 min_evaluate_clients=params.get('min_evaluate_clients', 1),
                 min_available_clients=params.get('min_available_clients', 1),
                 evaluate_fn=evaluate_fn,
+                evaluate_metrics_aggregation_fn=self._create_metrics_aggregation_fn(),
+                on_fit_config_fn=self._get_fit_config,
             )
 
         else:
@@ -208,7 +329,7 @@ class FederatedServer:
                 raise ValueError(f"Modelo '{model_type}' não suportado")
 
         # Número de rounds locais
-        num_local_round = self.config.num_local_rounds
+        num_local_round = self.config.num_local_boost_round
 
         def client_fn(cid: str):
             """
@@ -306,13 +427,13 @@ class FederatedServer:
             )
 
             # Configura servidor
-            server_config = ServerConfig(num_rounds=self.config.num_rounds)
+            server_config = ServerConfig(num_rounds=self.config.num_server_rounds)
 
             # Detecta GPU e configura backend
             backend_config = self._detect_gpu_and_configure()
 
             self.logger.info(
-                f"Iniciando simulação FL: {self.config.num_rounds} rounds, "
+                f"Iniciando simulação FL: {self.config.num_server_rounds} rounds, "
                 f"{self.config.num_clients} clientes"
             )
 
@@ -336,7 +457,7 @@ class FederatedServer:
                 "history": history,
                 "model_type": model_type,
                 "strategy_type": strategy_type,
-                "num_rounds": self.config.num_rounds,
+                "num_rounds": self.config.num_server_rounds,
                 "num_clients": self.config.num_clients,
             }
 

@@ -179,16 +179,23 @@ class BaseFLClient(Client, ABC):
             global_round = int(config.get("global_round", 0))
             logger.info(f"[Cliente {self.client_id}] Rodada global: {global_round}")
 
-            # Extrai parâmetros do modelo global (se existirem)
+            # Decide se treina do zero ou continua do modelo global
+            # Round 1 ou sem parâmetros: treina do zero
+            # Round 2+: continua do modelo global
             global_model_bytes = None
-            if ins.parameters and ins.parameters.tensors:
+            if global_round <= 1 or not ins.parameters or not ins.parameters.tensors:
+                # Primeira rodada: treina do zero
+                logger.info(
+                    f"[Cliente {self.client_id}] Round {global_round} - Treinando do zero"
+                )
+                global_model_bytes = None
+            else:
+                # Rounds seguintes: continua do modelo global
                 global_model_bytes = ins.parameters.tensors[0]
                 logger.info(
-                    f"[Cliente {self.client_id}] Modelo global recebido: "
-                    f"{len(global_model_bytes)} bytes"
+                    f"[Cliente {self.client_id}] Round {global_round} - "
+                    f"Continuando do modelo global ({len(global_model_bytes)} bytes)"
                 )
-            else:
-                logger.info(f"[Cliente {self.client_id}] Primeira rodada - sem modelo global")
 
             # Treina modelo local
             logger.info(f"[Cliente {self.client_id}] Treinando modelo local...")
