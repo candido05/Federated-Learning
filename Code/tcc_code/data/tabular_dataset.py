@@ -167,26 +167,51 @@ class TabularDataset(BaseDataset):
                 - X: Array numpy com features de shape (n_samples, n_features)
                 - y: Array numpy com labels de shape (n_samples,)
         """
-        # Remove a coluna 'label' para obter features
-        # Assume que a primeira coluna é o label e as demais são features
-        # ou que existe uma coluna chamada 'label'
+        # Para o dataset HIGGS, usa diretamente os arrays do HuggingFace
+        # sem conversão para pandas (mais eficiente e evita problemas de tipo)
 
-        # Converte para pandas para facilitar
-        df = hf_dataset.to_pandas()
+        # Verifica estrutura do dataset
+        column_names = hf_dataset.column_names
+        logger.info(f"Colunas do dataset: {column_names}")
 
         # Identifica coluna de label
-        if "label" in df.columns:
-            y = df["label"].values
-            X = df.drop("label", axis=1).values
-        elif "target" in df.columns:
-            y = df["target"].values
-            X = df.drop("target", axis=1).values
+        if "label" in column_names:
+            label_col = "label"
+            feature_cols = [col for col in column_names if col != "label"]
+        elif "target" in column_names:
+            label_col = "target"
+            feature_cols = [col for col in column_names if col != "target"]
         else:
-            # Assume que a primeira coluna é o label
-            y = df.iloc[:, 0].values
-            X = df.iloc[:, 1:].values
+            # Assume primeira coluna é label
+            label_col = column_names[0]
+            feature_cols = column_names[1:]
 
-        return X.astype(np.float32), y.astype(np.int64)
+        logger.info(f"Label column: {label_col}, Feature columns: {len(feature_cols)}")
+
+        # Extrai labels
+        y = np.array(hf_dataset[label_col], dtype=np.int64)
+
+        # Extrai features
+        # Para HIGGS, cada exemplo pode ter múltiplas features como arrays
+        # Precisamos empilhar corretamente
+        if len(feature_cols) == 1 and isinstance(hf_dataset[feature_cols[0]][0], list):
+            # Caso 1: Uma única coluna contendo array de features
+            X = np.array(hf_dataset[feature_cols[0]], dtype=np.float32)
+        else:
+            # Caso 2: Múltiplas colunas, cada uma com um valor escalar
+            feature_arrays = []
+            for col in feature_cols:
+                col_data = np.array(hf_dataset[col], dtype=np.float32)
+                # Se for 1D, adiciona dimensão
+                if col_data.ndim == 1:
+                    col_data = col_data.reshape(-1, 1)
+                feature_arrays.append(col_data)
+
+            X = np.hstack(feature_arrays)
+
+        logger.info(f"Conversão concluída: X.shape={X.shape}, y.shape={y.shape}")
+
+        return X, y
 
     def get_train_data(self) -> Tuple[np.ndarray, np.ndarray]:
         """Retorna os dados de treinamento normalizados.

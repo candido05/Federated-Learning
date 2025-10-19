@@ -17,6 +17,7 @@ def create_dataset(
     dataset_name: str,
     config,
     cache_dir: Optional[str] = None,
+    dataset_source: Optional[str] = None,
 ) -> BaseDataset:
     """Cria e retorna uma instância do dataset especificado.
 
@@ -27,6 +28,8 @@ def create_dataset(
         dataset_name: Nome do dataset a ser carregado (ex: "higgs").
         config: Objeto GlobalConfig com configurações do experimento.
         cache_dir: Diretório para cache dos dados (opcional).
+        dataset_source: Fonte completa do dataset no HuggingFace (ex: "jxie/higgs").
+                       Se None, usa fonte padrão baseada no nome.
 
     Returns:
         Instância de BaseDataset (ou subclasse) configurada.
@@ -44,13 +47,15 @@ def create_dataset(
 
     logger.info(f"Criando dataset: {dataset_name_lower}")
 
-    # Mapeamento de nomes para classes de datasets
+    # Mapeamento de nomes para classes de datasets e fontes padrão
     dataset_registry = {
-        "higgs": TabularDataset,  # Dataset tabular do HuggingFace (padrão: jxie/higgs)
+        "higgs": {
+            "class": TabularDataset,
+            "default_source": "jxie/higgs"
+        },
         # Adicione novos datasets aqui:
-        # "mnist": MNISTDataset,
-        # "cifar10": CIFAR10Dataset,
-        # "custom": CustomDataset,
+        # "mnist": {"class": MNISTDataset, "default_source": "mnist"},
+        # "cifar10": {"class": CIFAR10Dataset, "default_source": "cifar10"},
     }
 
     # Verifica se o dataset é suportado
@@ -61,11 +66,27 @@ def create_dataset(
             f"Datasets disponíveis: {available}"
         )
 
-    # Instancia o dataset apropriado
-    dataset_class = dataset_registry[dataset_name_lower]
-    dataset = dataset_class(config=config, cache_dir=cache_dir)
+    # Obtém configuração do dataset
+    dataset_config = dataset_registry[dataset_name_lower]
+    dataset_class = dataset_config["class"]
 
-    logger.info(f"Dataset {dataset_class.__name__} criado com sucesso")
+    # Usa dataset_source fornecido ou padrão
+    if dataset_source is None:
+        dataset_source = dataset_config["default_source"]
+
+    # Instancia o dataset apropriado
+    # Para TabularDataset, passa dataset_source
+    if dataset_class == TabularDataset:
+        dataset = dataset_class(
+            config=config,
+            cache_dir=cache_dir,
+            dataset_source=dataset_source
+        )
+    else:
+        # Para outros datasets que não precisam de dataset_source
+        dataset = dataset_class(config=config, cache_dir=cache_dir)
+
+    logger.info(f"Dataset {dataset_class.__name__} criado com sucesso (fonte: {dataset_source})")
 
     return dataset
 

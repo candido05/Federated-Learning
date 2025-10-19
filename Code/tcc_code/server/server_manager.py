@@ -5,7 +5,7 @@ Coordena experimentos FL, incluindo setup, criação de estratégias e execuçã
 """
 
 import logging
-from typing import Dict, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Tuple
 from flwr.common.typing import Scalar
 
 from flwr.server import ServerConfig
@@ -116,10 +116,14 @@ class FederatedServer:
 
         # Carrega dataset
         self.logger.info(f"Carregando dataset: {dataset_source}")
+
+        # Extrai o nome do dataset da fonte (ex: "jxie/higgs" -> "higgs")
+        dataset_name = dataset_source.split('/')[-1] if '/' in dataset_source else dataset_source
+
         self.dataset = create_dataset(
-            dataset_type="tabular",
+            dataset_name=dataset_name,
             config=self.config,
-            dataset_source=dataset_source,
+            dataset_source=dataset_source,  # Passa fonte completa
         )
 
         # Valida se dataset foi carregado com sucesso
@@ -129,11 +133,12 @@ class FederatedServer:
                 "Verifique se o nome do dataset está correto."
             )
 
-        self.dataset.prepare()
+        # Carrega os dados (método correto é load_data(), não prepare())
+        self.dataset.load_data()
 
-        # Valida se dados foram preparados corretamente
+        # Valida se dados foram carregados corretamente
         if not hasattr(self.dataset, 'X_train') or self.dataset.X_train is None:
-            raise ValueError("Dataset não possui dados de treino após prepare()")
+            raise ValueError("Dataset não possui dados de treino após load_data()")
 
         self.experiment_logger.logger.info(
             f"Dataset carregado: {len(self.dataset.X_train)} amostras de treino, "

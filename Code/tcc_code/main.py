@@ -660,6 +660,10 @@ Exemplos:
             print(f"\n{colorize(f'Erro no experimento {model}+{strategy}:', 'red', bold=True)}")
             print(f"{colorize(str(e), 'red')}")
 
+            # Mostra traceback completo para debugging
+            import traceback
+            traceback.print_exc()
+
             # Continua com próximo experimento
             continue
 
