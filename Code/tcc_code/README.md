@@ -1,203 +1,271 @@
-# Aprendizado Federado com Modelos Baseados em Árvores - Projeto TCC
+# Federated Learning - Tree-Based Models
 
-## Visão Geral
+Implementação modular e refatorada de Federated Learning com modelos baseados em árvore (XGBoost, LightGBM, CatBoost) usando o framework Flower.
 
-Este projeto implementa **Aprendizado Federado (FL)** com modelos baseados em árvores (**XGBoost**, **LightGBM**, **CatBoost**) usando o framework **Flower**. Faz parte de um TCC (Trabalho de Conclusão de Curso) investigando a otimização de modelos de aprendizado federado com SDN (Software-Defined Networking).
-
-### Foco da Pesquisa
-
-- **Objetivo Principal**: Avaliar modelos baseados em árvores em ambientes federados
-- **Framework**: Flower (flwr) para orquestração federada
-- **Integração SDN**: Otimizar tráfego de rede e comunicação entre clientes e servidor FL
-- **Cenários**: Comparar desempenho em distribuições de dados IID vs. non-IID
-- **Métricas**: Acurácia de classificação, tempo de convergência, overhead de comunicação, latência, consumo de banda
-
-## Estrutura do Projeto
+## 📁 Estrutura do Projeto
 
 ```
 tcc_code/
-├── config/                  # Arquivos de configuração
+├── common/                    # 🔧 Módulos compartilhados
 │   ├── __init__.py
-│   ├── config.py           # Dataclasses GlobalConfig e LoggingConfig
-│   └── model_params.py     # Hiperparâmetros dos modelos
-├── data/                    # Carregamento e particionamento de dados
-│   └── __init__.py
-├── models/                  # Implementações dos modelos
-│   └── __init__.py
-├── strategies/              # Estratégias FL (FedAvg, FedProx, etc.)
-│   └── __init__.py
-├── utils/                   # Funções utilitárias
-│   └── __init__.py
-├── server/                  # Implementação do servidor FL
-│   └── __init__.py
-├── logs/                    # Arquivos de log (criados em tempo de execução)
-├── main.py                  # Ponto de entrada
-├── requirements.txt         # Dependências Python
-├── .gitignore              # Regras do Git
-└── README.md               # Este arquivo
+│   ├── data_processing.py    # Processamento e particionamento do dataset HIGGS
+│   └── metrics_logger.py     # Cálculo de métricas (AUC, F1, etc.) e logging
+│
+├── algorithms/                # 🤖 Implementações de FL para cada algoritmo
+│   ├── __init__.py
+│   └── xgboost_fl.py         # Cliente, servidor e execução para XGBoost
+│
+├── archive/                   # 📦 Códigos funcionais originais (PRESERVADOS)
+│   ├── xgboost.py            # Código original XGBoost (funcional em Colab)
+│   ├── ligthGBM.py           # Código original LightGBM (funcional em Colab)
+│   └── catbbost.py           # Código original CatBoost (funcional em Colab)
+│
+├── run_experiments.py         # ▶️ Script principal de execução
+├── requirements.txt           # 📋 Dependências do projeto
+└── README.md                  # 📖 Este arquivo
 ```
 
-## Instalação
+## 🚀 Instalação
 
-### 1. Criar Ambiente Virtual
+### 1. Criar ambiente virtual
 
 ```bash
-# Navegar para o diretório do projeto
 cd Code/tcc_code
-
-# Criar ambiente virtual
 python -m venv venv
 
-# Ativar ambiente virtual
-# Windows:
+# Windows
 venv\Scripts\activate
-# Linux/Mac:
+
+# Linux/Mac
 source venv/bin/activate
 ```
 
-### 2. Instalar Dependências
+### 2. Instalar dependências
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Configuração
+## 💻 Uso
 
-### Configuração Global
-
-Edite `config/config.py` para modificar as configurações do experimento:
-
-```python
-GlobalConfig(
-    num_clients=6,              # Número de clientes FL
-    sample_per_client=8000,     # Amostras por cliente
-    num_server_rounds=6,        # Rodadas de comunicação
-    num_local_boost_round=20,   # Rodadas de boosting local
-    seed=42,                    # Semente aleatória para reprodutibilidade
-    test_fraction=0.2,          # Fração dos dados de teste
-    dataset_name="higgs"        # Dataset a ser usado
-)
-```
-
-### Hiperparâmetros dos Modelos
-
-Modifique `config/model_params.py` para ajustar os hiperparâmetros dos modelos:
-
-- **XGBoost**: `XGBOOST_PARAMS` (seed=42)
-- **CatBoost**: `CATBOOST_PARAMS` (random_seed=42)
-- **LightGBM**: `LIGHTGBM_PARAMS` (seed=42)
-
-### Configuração de Logging
-
-Controle o comportamento de logging em `config/config.py`:
-
-```python
-LoggingConfig(
-    log_dir="logs",             # Diretório de logs
-    save_client_logs=True,      # Salvar logs individuais dos clientes
-    save_round_logs=True,       # Salvar logs rodada por rodada
-    verbose=True                # Imprimir logs detalhados
-)
-```
-
-## Uso
-
-### Executando Experimentos
+### Execução Básica
 
 ```bash
-# Executar experimento principal
-python main.py
+# XGBoost com estratégia Cyclic
+python run_experiments.py --algorithm xgboost --strategy cyclic
+
+# XGBoost com estratégia Bagging
+python run_experiments.py --algorithm xgboost --strategy bagging
+
+# Executar ambas estratégias
+python run_experiments.py --algorithm xgboost --strategy both
 ```
 
-### Argumentos de Linha de Comando
+### Parâmetros Disponíveis
 
 ```bash
-# Especificar modelo
-python main.py --model xgboost
+python run_experiments.py --help
 
-# Especificar estratégia FL
-python main.py --strategy FedAvg
-
-# Configuração customizada
-python main.py --num-clients 10 --num-rounds 10
-
-# Configurar semente aleatória
-python main.py --seed 42
-
-# Habilitar logging verboso
-python main.py --verbose
+Opções:
+  --algorithm {xgboost,lightgbm,catboost,all}
+                        Algoritmo a executar (padrão: xgboost)
+  --strategy {cyclic,bagging,both}
+                        Estratégia de agregação (padrão: cyclic)
+  --num-clients NUM     Número de clientes (padrão: 6)
+  --num-rounds NUM      Número de rodadas do servidor (padrão: 6)
+  --local-rounds NUM    Rodadas locais de boosting (padrão: 20)
+  --samples NUM         Amostras por cliente (padrão: 8000)
+  --seed NUM            Random seed (padrão: 42)
 ```
 
-## Modelos Suportados
+### Exemplos Avançados
 
-1. **XGBoost** - Gradient boosting com algoritmo baseado em histograma
-2. **LightGBM** - Framework rápido de gradient boosting
-3. **CatBoost** - Gradient boosting com suporte a features categóricas
+```bash
+# Experimento customizado - mais clientes e rodadas
+python run_experiments.py \
+    --algorithm xgboost \
+    --strategy both \
+    --num-clients 10 \
+    --num-rounds 10 \
+    --local-rounds 30 \
+    --samples 5000
 
-## Estratégias de Aprendizado Federado
+# Teste rápido com poucos dados
+python run_experiments.py \
+    --num-clients 3 \
+    --num-rounds 3 \
+    --samples 2000
+```
 
-- **FedAvg**: Média federada padrão
-- **FedProx**: Termo proximal para dados heterogêneos
-- **FedAdam**: Taxa de aprendizado adaptativa no servidor
-- **FedAdagrad**: Agregação de gradiente adaptativa
-- **FedYogi**: Otimização adaptativa
-- **FedMedian**: Robusto a outliers
+## 📊 Métricas Coletadas
 
-## Dataset
+Para cada rodada, são calculadas automaticamente:
+- ✅ **Acurácia** (Accuracy)
+- ✅ **Precisão** (Precision)
+- ✅ **Revocação** (Recall)
+- ✅ **F1-Score**
+- ✅ **AUC-ROC**
+- ✅ **Especificidade**
+- ✅ **Matriz de Confusão** (TN, FP, FN, TP)
 
-Atualmente configurado para o dataset **HIGGS** (classificação binária).
+## 📈 Outputs
 
-### Particionamento de Dados
+### Arquivo de Resultados
+Após a execução, um arquivo JSON é gerado: `federated_learning_results.json`
 
-- **IID**: Distribuição independente e idêntica entre clientes
-- **Non-IID**: Particionamento heterogêneo baseado em Dirichlet
+```json
+{
+  "xgboost_cyclic": {
+    "metrics_distributed": [...],
+    "metrics_centralized": [...],
+    "losses_distributed": [...],
+    "losses_centralized": [...]
+  }
+}
+```
 
-## Logging e Resultados
+### Console
+Métricas são impressas em tempo real:
 
-Logs são salvos no diretório `logs/`:
+```
+[Server] Round 1 Métricas de Performance:
+  Acurácia:    0.8542
+  Precisão:    0.8331
+  Revocação:   0.8765
+  F1-Score:    0.8543
+  AUC:         0.9102
+  Especific.:  0.8319
+  Matriz de Confusão:
+    TN: 3421 | FP:  679
+    FN:  498 | TP: 3402
+```
 
-- **Logs de clientes**: Logs de treinamento individual dos clientes
-- **Logs de rodadas**: Métricas por rodada de comunicação
-- **Resultados**: Arquivos CSV com acurácia, loss e métricas de convergência
+## 🏗️ Arquitetura Modular
 
-## Desenvolvimento
+### 1. `common/data_processing.py`
+- **DataProcessor**: Classe para carregar e particionar dataset HIGGS
+- **replace_keys()**: Utilitário para converter configurações
 
-### Estilo de Código
+### 2. `common/metrics_logger.py`
+- **calculate_comprehensive_metrics()**: Calcula todas as métricas
+- **print_metrics_summary()**: Imprime métricas formatadas
+- **ExperimentLogger**: Gerencia logging completo de experimentos
+- **evaluate_metrics_aggregation()**: Agrega métricas dos clientes
 
-- **Type hints**: Todas as funções usam anotações de tipo
-- **Docstrings**: Docstrings estilo Google para todos os módulos, classes e funções
-- **Formatação**: Segue diretrizes PEP 8
+### 3. `algorithms/xgboost_fl.py`
+- **XGBoostClient**: Cliente FL para XGBoost
+- **run_xgboost_experiment()**: Função principal para executar experimento
+- Suporte automático para GPU/CPU
+- Estratégias Cyclic e Bagging
 
-### Adicionando Novos Modelos
+## 🎯 Estratégias de Agregação
 
-1. Adicionar parâmetros do modelo em `config/model_params.py`
-2. Implementar wrapper do modelo em `models/`
-3. Atualizar imports de configuração
+### Cyclic (Cíclica)
+- ⚡ Treina **um cliente por rodada**, sequencialmente
+- 🔄 Modelo passa de cliente em cliente
+- ✅ Melhor para convergência gradual
+- 💾 Menor uso de memória
 
-### Adicionando Novas Estratégias
+### Bagging
+- 🚀 **Todos os clientes treinam em paralelo**
+- 🔀 Modelos são agregados no servidor
+- ⚡ Mais rápido (processamento paralelo)
+- 💻 Requer mais recursos computacionais
 
-1. Criar classe de estratégia em `strategies/`
-2. Herdar da estratégia base do Flower
-3. Registrar na configuração do servidor
+## 📦 Códigos Originais (Archive)
 
-## Solução de Problemas
+Os códigos funcionais originais estão **preservados** em `archive/`:
+- `xgboost.py` - Código original do XGBoost (testado e funcional no Colab)
+- `ligthGBM.py` - Código original do LightGBM (testado e funcional no Colab)
+- `catbbost.py` - Código original do CatBoost (testado e funcional no Colab)
 
-### Problemas Comuns
+**⚠️ Estes arquivos são referência e NÃO devem ser modificados.**
 
-1. **Erros de import**: Certifique-se de que o ambiente virtual está ativado
-2. **Erros CUDA**: XGBoost/LightGBM podem requerer instalação específica para GPU
-3. **Erros de memória**: Reduza `sample_per_client` ou `num_clients`
+## ✅ Status de Implementação
 
-### Problemas de Logging
+- ✅ **XGBoost**: Totalmente funcional e modularizado para VSCode
+- ⏳ **LightGBM**: Em desenvolvimento (use `archive/ligthGBM.py` temporariamente)
+- ⏳ **CatBoost**: Em desenvolvimento (use `archive/catbbost.py` temporariamente)
 
-Se os logs não estão sendo salvos:
-- Verifique as permissões do diretório `logs/`
-- Verifique o caminho `LoggingConfig.log_dir`
-- Certifique-se de que `save_client_logs` e `save_round_logs` estão habilitados
+## 🐛 Troubleshooting
 
-## Referências
+### Erro: "Module not found"
+Certifique-se de executar a partir do diretório correto:
+```bash
+cd Code/tcc_code
+python run_experiments.py ...
+```
 
-- [Documentação do Flower](https://flower.dev/docs/)
-- [Documentação do XGBoost](https://xgboost.readthedocs.io/)
-- [Documentação do LightGBM](https://lightgbm.readthedocs.io/)
-- [Documentação do CatBoost](https://catboost.ai/docs/)
+### Erro: "CUDA out of memory"
+Reduza o número de clientes ou amostras:
+```bash
+python run_experiments.py --num-clients 4 --samples 5000
+```
+
+### Dataset HIGGS não baixa
+- O dataset é baixado automaticamente do HuggingFace
+- Certifique-se de ter conexão com internet
+- Pode demorar na primeira execução (~1GB)
+
+### Import errors
+Reinstale as dependências:
+```bash
+pip install --upgrade -r requirements.txt
+```
+
+## 🔬 Para Desenvolvedores
+
+### Estrutura de um Módulo de Algoritmo
+
+Cada algoritmo em `algorithms/` deve implementar:
+
+1. **Cliente FL** (classe que herda de `flwr.client.Client`)
+   - `fit()`: Treino local com modelo
+   - `evaluate()`: Avaliação local
+
+2. **Funções Factory**
+   - `create_client_fn()`: Cria função de cliente
+   - `create_server_fn()`: Cria função de servidor
+   - `get_evaluate_fn()`: Cria função de avaliação centralizada
+
+3. **Função Principal**
+   - `run_{algorithm}_experiment()`: Orquestra experimento completo
+
+### Exemplo: Template para Novo Algoritmo
+
+```python
+# algorithms/new_algorithm_fl.py
+
+from ..common import DataProcessor, calculate_comprehensive_metrics
+from flwr.client import Client, ClientApp
+from flwr.common import FitIns, FitRes, EvaluateIns, EvaluateRes
+
+class NewAlgorithmClient(Client):
+    def fit(self, ins: FitIns) -> FitRes:
+        # Implementar treino local
+        pass
+
+    def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        # Implementar avaliação local
+        pass
+
+def run_new_algorithm_experiment(data_processor, num_clients, ...):
+    # Implementar lógica completa do experimento
+    pass
+```
+
+## 📚 Referências
+
+- **Flower Framework**: https://flower.ai/
+- **XGBoost**: https://xgboost.readthedocs.io/
+- **LightGBM**: https://lightgbm.readthedocs.io/
+- **CatBoost**: https://catboost.ai/
+- **Dataset HIGGS**: https://huggingface.co/datasets/jxie/higgs
+
+## 📝 Licença
+
+Este código faz parte de um projeto de TCC (Trabalho de Conclusão de Curso) sobre **"Optimization of Federated Learning Models with SDN (Software-Defined Networking)"**.
+
+---
+
+**Desenvolvido com 🤖 para TCC - Federated Learning com SDN**
