@@ -177,7 +177,8 @@ def main():
                 elif algorithm == "catboost":
                     result = run_catboost(config, strategy)
 
-                if result:
+                # Verificar se o resultado existe (pode ser um objeto History do Flower)
+                if result is not None:
                     all_results[experiment_name] = result
                     print(f"\n✓ Experimento {experiment_name} concluído com sucesso!\n")
 
