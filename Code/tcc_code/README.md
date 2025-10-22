@@ -48,17 +48,38 @@ pip install -r requirements.txt
 
 ## 💻 Uso
 
-### Execução Básica
+### ⚡ Execução Rápida - Scripts All-in-One
+
+**Para executar todos os experimentos de um algoritmo (Cyclic + Bagging):**
+
+```bash
+# CatBoost - Todas as estratégias
+PYTHONPATH=. python run_catboost_all.py
+
+# XGBoost - Todas as estratégias
+PYTHONPATH=. python run_xgboost_all.py
+
+# LightGBM - Todas as estratégias
+PYTHONPATH=. python run_lightgbm_all.py
+```
+
+**Para executar TODOS os 6 experimentos (XGBoost, LightGBM, CatBoost × Cyclic, Bagging):**
+
+```bash
+PYTHONPATH=. python run_all_experiments.py
+```
+
+### Execução Individual via CLI
 
 ```bash
 # XGBoost com estratégia Cyclic
-python run_experiments.py --algorithm xgboost --strategy cyclic
+PYTHONPATH=. python run_experiments.py --algorithm xgboost --strategy cyclic
 
 # XGBoost com estratégia Bagging
-python run_experiments.py --algorithm xgboost --strategy bagging
+PYTHONPATH=. python run_experiments.py --algorithm xgboost --strategy bagging
 
 # Executar ambas estratégias
-python run_experiments.py --algorithm xgboost --strategy both
+PYTHONPATH=. python run_experiments.py --algorithm xgboost --strategy both
 ```
 
 ### Parâmetros Disponíveis
@@ -110,25 +131,109 @@ Para cada rodada, são calculadas automaticamente:
 
 ## 📈 Outputs
 
-### Arquivo de Resultados
-Após a execução, um arquivo JSON é gerado: `federated_learning_results.json`
+### Sistema de Logging Estruturado
+
+Todos os experimentos são automaticamente salvos na pasta `logs/` organizada por **algoritmo → data/hora → estratégia**:
+
+```
+logs/
+├── xgboost/
+│   ├── 20251021_143052_cyclic/       # Pasta única por execução
+│   │   ├── execution_log.txt         # Log completo com todas as métricas
+│   │   ├── metrics.json              # Dados estruturados em JSON
+│   │   └── README.md                 # Resumo do experimento
+│   └── 20251021_144120_bagging/
+│       ├── execution_log.txt
+│       ├── metrics.json
+│       └── README.md
+├── lightgbm/
+│   └── ...
+└── catboost/
+    └── ...
+```
+
+**Vantagens dessa estrutura:**
+- ✅ Cada execução tem sua própria pasta com timestamp
+- ✅ Fácil identificar quando o experimento foi executado
+- ✅ Nunca sobrescreve resultados anteriores
+- ✅ README.md em cada pasta para navegação rápida
+
+### Arquivo de Log de Texto (.txt)
+
+Contém output formatado de cada experimento:
+
+```
+================================================================================
+INICIANDO EXPERIMENTO: XGBOOST - CYCLIC
+================================================================================
+Configuração:
+  - Algoritmo: xgboost
+  - Estratégia: cyclic
+  - Número de clientes: 6
+  - Rodadas globais: 3
+  - Rodadas locais: 20
+  - Amostras por cliente: 2000
+================================================================================
+
+[SERVER] Round 1 Métricas de Performance:
+  Acurácia:    0.6954
+  Precisão:    0.6987
+  Revocação:   0.6880
+  F1-Score:    0.6933
+  AUC:         0.7651
+  Especific.:  0.7028
+  Matriz de Confusão:
+    TN:  281 | FP:  119
+    FN:  125 | TP:  275
+
+...
+
+================================================================================
+EXPERIMENTO CONCLUÍDO: XGBOOST - CYCLIC
+Tempo total: 45.32 segundos
+================================================================================
+```
+
+### Arquivo JSON (.json)
+
+Contém dados estruturados completos:
 
 ```json
 {
-  "xgboost_cyclic": {
-    "metrics_distributed": [...],
-    "metrics_centralized": [...],
-    "losses_distributed": [...],
-    "losses_centralized": [...]
-  }
+  "experiment_info": {
+    "algorithm": "xgboost",
+    "strategy": "cyclic",
+    "num_clients": 6,
+    "num_rounds": 3,
+    "num_local_rounds": 20,
+    "samples_per_client": 2000,
+    "total_time_seconds": 45.32
+  },
+  "metrics_by_round": {
+    "1": {
+      "accuracy": 0.6954,
+      "precision": 0.6987,
+      "recall": 0.6880,
+      "f1_score": 0.6933,
+      "auc": 0.7651,
+      "specificity": 0.7028,
+      "confusion_matrix": {
+        "tn": 281, "fp": 119,
+        "fn": 125, "tp": 275
+      }
+    },
+    ...
+  },
+  "detailed_logs": [...],
+  "final_history": "History(...)"
 }
 ```
 
 ### Console
-Métricas são impressas em tempo real:
+Métricas são impressas em tempo real (e salvas no arquivo .txt):
 
 ```
-[Server] Round 1 Métricas de Performance:
+[SERVER] Round 1 Métricas de Performance:
   Acurácia:    0.8542
   Precisão:    0.8331
   Revocação:   0.8765
@@ -147,10 +252,18 @@ Métricas são impressas em tempo real:
 - **replace_keys()**: Utilitário para converter configurações
 
 ### 2. `common/metrics_logger.py`
-- **calculate_comprehensive_metrics()**: Calcula todas as métricas
-- **print_metrics_summary()**: Imprime métricas formatadas
+- **calculate_comprehensive_metrics()**: Calcula todas as métricas (AUC, F1, Precision, Recall, etc.)
+- **print_metrics_summary()**: Imprime métricas formatadas no console
 - **ExperimentLogger**: Gerencia logging completo de experimentos
-- **evaluate_metrics_aggregation()**: Agrega métricas dos clientes
+  - Cria diretórios automaticamente em `logs/{algorithm}/`
+  - Salva logs em tempo real (.txt) e dados estruturados (.json)
+  - Rastreia tempo de execução e histórico completo
+  - Métodos principais:
+    - `start_experiment()`: Inicializa experimento e logging
+    - `log_round_metrics()`: Registra métricas de cada rodada
+    - `log_aggregated_metrics()`: Registra métricas agregadas
+    - `end_experiment()`: Finaliza e salva todos os dados
+- **evaluate_metrics_aggregation()**: Agrega métricas de múltiplos clientes
 
 ### 3. `algorithms/xgboost_fl.py`
 - **XGBoostClient**: Cliente FL para XGBoost

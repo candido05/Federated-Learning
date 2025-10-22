@@ -1,0 +1,82 @@
+
+================================================================================
+INICIANDO EXPERIMENTO: CATBOOST - BAGGING
+================================================================================
+Configuração:
+  - Algoritmo: catboost
+  - Estratégia: bagging
+  - Número de clientes: 6
+  - Rodadas globais: 3
+  - Rodadas locais: 20
+  - Amostras por cliente: 8000
+================================================================================
+
+
+[SERVER] Round 1 Métricas de Performance:
+  Acurácia:    0.6884
+  Precisão:    0.6828
+  Revocação:   0.7696
+  F1-Score:    0.7236
+  AUC:         0.7627
+  Especific.:  0.5968
+  Matriz de Confusão:
+    TN: 2244 | FP: 1516
+    FN:  977 | TP: 3263
+
+[SERVER] Round 2 Métricas de Performance:
+  Acurácia:    0.6995
+  Precisão:    0.6966
+  Revocação:   0.7672
+  F1-Score:    0.7302
+  AUC:         0.7732
+  Especific.:  0.6231
+  Matriz de Confusão:
+    TN: 2343 | FP: 1417
+    FN:  987 | TP: 3253
+
+[SERVER] Round 3 Métricas de Performance:
+  Acurácia:    0.7069
+  Precisão:    0.7182
+  Revocação:   0.7356
+  F1-Score:    0.7268
+  AUC:         0.7802
+  Especific.:  0.6745
+  Matriz de Confusão:
+    TN: 2536 | FP: 1224
+    FN: 1121 | TP: 3119
+
+================================================================================
+RESUMO DAS MÉTRICAS POR RODADA:
+================================================================================
+
+Round 1:
+  Acurácia:    0.6884
+  Precisão:    0.6828
+  Revocação:   0.7696
+  F1-Score:    0.7236
+  AUC:         0.7627
+  Especific.:  0.5968
+
+Round 2:
+  Acurácia:    0.6995
+  Precisão:    0.6966
+  Revocação:   0.7672
+  F1-Score:    0.7302
+  AUC:         0.7732
+  Especific.:  0.6231
+
+Round 3:
+  Acurácia:    0.7069
+  Precisão:    0.7182
+  Revocação:   0.7356
+  F1-Score:    0.7268
+  AUC:         0.7802
+  Especific.:  0.6745
+
+
+================================================================================
+EXPERIMENTO CONCLUÍDO: CATBOOST - BAGGING
+Tempo total: 31.49 segundos
+Total de rodadas executadas: 3
+================================================================================
+

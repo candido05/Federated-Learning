@@ -23,7 +23,7 @@ from logging import INFO, WARNING
 
 from common import (
     DataProcessor, replace_keys, calculate_comprehensive_metrics,
-    print_metrics_summary, evaluate_metrics_aggregation
+    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger
 )
 
 
@@ -169,7 +169,7 @@ def create_client_fn(data_processor: DataProcessor, num_local_round: int, params
     return client_fn
 
 
-def get_evaluate_fn(data_processor: DataProcessor, params: Dict):
+def get_evaluate_fn(data_processor: DataProcessor, params: Dict, logger: ExperimentLogger = None):
     """Cria função de avaliação centralizada do servidor"""
 
     def evaluate_fn(server_round: int, parameters: Parameters, config: Dict[str, Scalar]):
@@ -185,7 +185,12 @@ def get_evaluate_fn(data_processor: DataProcessor, params: Dict):
                 test_dmatrix = xgb.DMatrix(data_processor.X_test_all, label=data_processor.y_test_all)
                 y_pred_proba = bst.predict(test_dmatrix)
                 comprehensive_metrics = calculate_comprehensive_metrics(data_processor.y_test_all, y_pred_proba)
-                print_metrics_summary(comprehensive_metrics, round_num=server_round)
+
+                # Log usando o logger se disponível
+                if logger:
+                    logger.log_round_metrics(server_round, comprehensive_metrics, source="server")
+                else:
+                    print_metrics_summary(comprehensive_metrics, round_num=server_round)
 
                 return_metrics = {k: v for k, v in comprehensive_metrics.items() if k != 'confusion_matrix'}
                 return float(1.0 - comprehensive_metrics['accuracy']), return_metrics
@@ -203,7 +208,7 @@ def config_func(rnd: int) -> Dict[str, str]:
     return {"global_round": str(rnd)}
 
 
-def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict):
+def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None):
     """Factory function para criar função do servidor"""
 
     def server_fn(context: Context):
@@ -216,7 +221,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
         centralised_eval = cfg.get("centralised_eval", True)
 
         parameters = Parameters(tensor_type="", tensors=[])
-        evaluate_fn = get_evaluate_fn(data_processor, params) if centralised_eval else None
+        evaluate_fn = get_evaluate_fn(data_processor, params, logger) if centralised_eval else None
         fraction_eval = 0.0 if centralised_eval and train_method == "bagging" else fraction_evaluate
         agg_fn = evaluate_metrics_aggregation if fraction_eval > 0 else None
 
@@ -224,6 +229,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
             strategy = FedXgbBagging(
                 fraction_fit=fraction_fit,
                 fraction_evaluate=fraction_eval,
+                evaluate_fn=evaluate_fn,
                 on_evaluate_config_fn=config_func,
                 on_fit_config_fn=config_func,
                 evaluate_metrics_aggregation_fn=agg_fn,
@@ -233,6 +239,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
             strategy = FedXgbCyclic(
                 fraction_fit=1.0,
                 fraction_evaluate=fraction_eval,
+                evaluate_fn=evaluate_fn,
                 evaluate_metrics_aggregation_fn=agg_fn,
                 on_evaluate_config_fn=config_func,
                 on_fit_config_fn=config_func,
@@ -289,6 +296,17 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
     Returns:
         Histórico de resultados
     """
+    # Inicializar logger
+    logger = ExperimentLogger(
+        algorithm_name="xgboost",
+        strategy_name=train_method,
+        num_clients=num_clients,
+        num_rounds=num_server_rounds,
+        num_local_rounds=num_local_boost_round,
+        samples_per_client=data_processor.sample_per_client
+    )
+    logger.start_experiment()
+
     USE_GPU = torch.cuda.is_available()
     tree_method = "gpu_hist" if USE_GPU else "hist"
 
@@ -307,7 +325,7 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
     client_fn = create_client_fn(data_processor, num_local_boost_round, params)
     client_app = ClientApp(client_fn=client_fn)
 
-    server_fn = create_server_fn(data_processor, num_server_rounds, params)
+    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger)
     server_app = ServerApp(server_fn=server_fn)
 
     # Configurar recursos
@@ -344,5 +362,8 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
         backend_config=backend_config,
         run_cfg=run_cfg,
     )
+
+    # Finalizar logging
+    logger.end_experiment(final_history=result)
 
     return result
