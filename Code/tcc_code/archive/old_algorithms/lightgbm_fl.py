@@ -1,11 +1,11 @@
 """
-Módulo para Federated Learning com CatBoost
-Baseado no código funcional de archive/catbbost.py
+Módulo para Federated Learning com LightGBM
+Baseado no código funcional de archive/ligthGBM.py
 """
 
 import os
 import inspect
-from catboost import CatBoost, Pool
+import lightgbm as lgb
 import torch
 from typing import Dict
 from flwr.client import Client, ClientApp
@@ -27,14 +27,14 @@ from common import (
 )
 
 
-class CatBoostClient(Client):
-    """Cliente Federated Learning para CatBoost"""
+class LightGBMClient(Client):
+    """Cliente Federated Learning para LightGBM"""
 
-    def __init__(self, train_pool, valid_pool, num_train, num_val,
+    def __init__(self, train_data, valid_data, num_train, num_val,
                  num_local_round, params, train_method, cid: int,
                  X_valid=None, y_valid=None):
-        self.train_pool = train_pool
-        self.valid_pool = valid_pool
+        self.train_data = train_data
+        self.valid_data = valid_data
         self.num_train = num_train
         self.num_val = num_val
         self.num_local_round = num_local_round
@@ -50,40 +50,57 @@ class CatBoostClient(Client):
 
         if global_round <= 1 or not ins.parameters.tensors:
             # Primeira rodada: treinar do zero
-            model = CatBoost(self.params)
-            model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False)
+            bst = lgb.train(
+                self.params,
+                self.train_data,
+                num_boost_round=self.num_local_round,
+                valid_sets=[self.valid_data],
+                valid_names=['valid'],
+            )
         else:
             # Carregar modelo global e continuar treinamento
             try:
                 global_model_bytes = bytearray(ins.parameters.tensors[0])
-                temp_model_path = f"/tmp/catboost_global_model_{self.cid}_{global_round}.cbm"
+                temp_model_path = f"/tmp/lgb_global_model_{self.cid}_{global_round}.txt"
+
                 with open(temp_model_path, 'wb') as f:
                     f.write(global_model_bytes)
 
-                model = CatBoost(self.params)
-                model.load_model(temp_model_path)
-                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False, init_model=model)
+                # Carregar modelo e continuar treinamento
+                bst = lgb.train(
+                    self.params,
+                    self.train_data,
+                    num_boost_round=self.num_local_round,
+                    init_model=temp_model_path,
+                    valid_sets=[self.valid_data],
+                    valid_names=['valid'],
+                )
 
                 if os.path.exists(temp_model_path):
                     os.remove(temp_model_path)
 
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Falha ao carregar modelo global: {e}; treinando do zero.")
-                model = CatBoost(self.params)
-                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False)
+                bst = lgb.train(
+                    self.params,
+                    self.train_data,
+                    num_boost_round=self.num_local_round,
+                    valid_sets=[self.valid_data],
+                    valid_names=['valid'],
+                )
 
         # Calcular métricas avançadas
         if self.X_valid is not None and self.y_valid is not None:
             try:
-                y_pred_proba = model.predict(self.valid_pool, prediction_type='Probability')[:, 1]
+                y_pred_proba = bst.predict(self.X_valid)
                 metrics = calculate_comprehensive_metrics(self.y_valid, y_pred_proba)
                 print_metrics_summary(metrics, client_id=self.cid, round_num=global_round)
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Erro ao calcular métricas: {e}")
 
         # Salvar modelo local
-        temp_save_path = f"/tmp/catboost_local_model_{self.cid}_{global_round}.cbm"
-        model.save_model(temp_save_path, format='cbm')
+        temp_save_path = f"/tmp/lgb_local_model_{self.cid}_{global_round}.txt"
+        bst.save_model(temp_save_path)
 
         with open(temp_save_path, 'rb') as f:
             local_model_bytes = f.read()
@@ -109,14 +126,13 @@ class CatBoostClient(Client):
             )
 
         # Carregar modelo
-        temp_model_path = f"/tmp/catboost_eval_model_{self.cid}.cbm"
+        temp_model_path = f"/tmp/lgb_eval_model_{self.cid}.txt"
         model_bytes = bytearray(ins.parameters.tensors[0])
 
         with open(temp_model_path, 'wb') as f:
             f.write(model_bytes)
 
-        model = CatBoost(self.params)
-        model.load_model(temp_model_path)
+        bst = lgb.Booster(model_file=temp_model_path)
 
         if os.path.exists(temp_model_path):
             os.remove(temp_model_path)
@@ -124,7 +140,7 @@ class CatBoostClient(Client):
         # Calcular métricas avançadas
         if self.X_valid is not None and self.y_valid is not None:
             try:
-                y_pred_proba = model.predict(self.valid_pool, prediction_type='Probability')[:, 1]
+                y_pred_proba = bst.predict(self.X_valid)
                 comprehensive_metrics = calculate_comprehensive_metrics(self.y_valid, y_pred_proba)
 
                 return_metrics = {k: v for k, v in comprehensive_metrics.items() if k != 'confusion_matrix'}
@@ -146,10 +162,10 @@ class CatBoostClient(Client):
         )
 
 
-# Estratégias customizadas para CatBoost
+# Estratégias customizadas para LightGBM
 
-class FedCatBoostBagging(Strategy):
-    """Estratégia de Bagging para CatBoost"""
+class FedLightGBMBagging(Strategy):
+    """Estratégia de Bagging para LightGBM"""
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=1.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
@@ -220,8 +236,8 @@ class FedCatBoostBagging(Strategy):
         return self.evaluate_fn(server_round, parameters, {})
 
 
-class FedCatBoostCyclic(Strategy):
-    """Estratégia Cíclica para CatBoost"""
+class FedLightGBMCyclic(Strategy):
+    """Estratégia Cíclica para LightGBM"""
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=0.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
@@ -312,13 +328,13 @@ def create_client_fn(data_processor: DataProcessor, num_local_round: int, params
             partition_id, test_fraction, centralised_eval_client
         )
 
-        train_pool = Pool(train_X, label=train_y)
-        valid_pool = Pool(valid_X, label=valid_y)
+        train_data = lgb.Dataset(train_X, label=train_y)
+        valid_data = lgb.Dataset(valid_X, label=valid_y, reference=train_data)
         num_train = train_X.shape[0]
         num_val = valid_X.shape[0]
 
-        return CatBoostClient(
-            train_pool, valid_pool, num_train, num_val,
+        return LightGBMClient(
+            train_data, valid_data, num_train, num_val,
             num_local_round, params, cfg.get("train_method", "cyclic"),
             partition_id, X_valid=valid_X, y_valid=valid_y
         ).to_client()
@@ -334,20 +350,18 @@ def get_evaluate_fn(data_processor: DataProcessor, params: Dict, logger: Experim
             return 0.693147, {"accuracy": 0.5, "precision": 0.0, "recall": 0.0, "f1_score": 0.0, "auc": 0.5}
 
         try:
-            temp_model_path = "/tmp/catboost_server_eval.cbm"
+            temp_model_path = "/tmp/lgb_server_eval.txt"
             if parameters.tensors:
                 model_bytes = bytearray(parameters.tensors[-1])
                 with open(temp_model_path, 'wb') as f:
                     f.write(model_bytes)
 
-                model = CatBoost(params)
-                model.load_model(temp_model_path)
+                bst = lgb.Booster(model_file=temp_model_path)
 
                 if os.path.exists(temp_model_path):
                     os.remove(temp_model_path)
 
-                test_pool = Pool(data_processor.X_test_all, label=data_processor.y_test_all)
-                y_pred_proba = model.predict(test_pool, prediction_type='Probability')[:, 1]
+                y_pred_proba = bst.predict(data_processor.X_test_all)
                 comprehensive_metrics = calculate_comprehensive_metrics(data_processor.y_test_all, y_pred_proba)
 
                 # Log usando o logger se disponível
@@ -390,7 +404,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
         agg_fn = evaluate_metrics_aggregation if fraction_eval > 0 else None
 
         if train_method == "bagging":
-            strategy = FedCatBoostBagging(
+            strategy = FedLightGBMBagging(
                 fraction_fit=fraction_fit,
                 fraction_evaluate=fraction_eval,
                 evaluate_fn=evaluate_fn,
@@ -400,7 +414,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 initial_parameters=parameters,
             )
         else:  # cyclic
-            strategy = FedCatBoostCyclic(
+            strategy = FedLightGBMCyclic(
                 fraction_fit=1.0,
                 fraction_evaluate=fraction_eval,
                 evaluate_fn=evaluate_fn,
@@ -443,11 +457,11 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
         return run_simulation(**kwargs2)
 
 
-def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
+def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
                             num_server_rounds: int, num_local_boost_round: int,
                             train_method: str = "cyclic", seed: int = 42):
     """
-    Executa experimento de Federated Learning com CatBoost
+    Executa experimento de Federated Learning com LightGBM
 
     Args:
         data_processor: Processador de dados já inicializado
@@ -462,7 +476,7 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     """
     # Inicializar logger
     logger = ExperimentLogger(
-        algorithm_name="catboost",
+        algorithm_name="lightgbm",
         strategy_name=train_method,
         num_clients=num_clients,
         num_rounds=num_server_rounds,
@@ -472,20 +486,35 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     logger.start_experiment()
 
     USE_GPU = torch.cuda.is_available()
-    task_type = "GPU" if USE_GPU else "CPU"
+    device_type = "gpu" if USE_GPU else "cpu"
 
-    log(INFO, f"GPU disponível: {USE_GPU} | task_type: {task_type}")
+    log(INFO, f"GPU disponível: {USE_GPU} | device: {device_type}")
+
+    # Detectar número de classes
+    import numpy as np
+    num_classes = len(np.unique(data_processor.y_test_all))
+    log(INFO, f"Número de classes detectadas: {num_classes}")
+
+    if num_classes == 2:
+        objective = "binary"
+        metric = "binary_logloss"
+    else:
+        objective = "multiclass"
+        metric = "multi_logloss"
 
     params = {
-        "iterations": num_local_boost_round,
-        "loss_function": "Logloss",
-        "eval_metric": "AUC",
+        "objective": objective,
+        "metric": metric,
+        "verbosity": -1,
+        "boosting_type": "gbdt",
+        "num_leaves": 31,
         "learning_rate": 0.1,
-        "depth": 6,
-        "task_type": task_type,
-        "verbose": False,
-        "random_seed": seed
+        "device": device_type,
+        "seed": seed
     }
+
+    if num_classes > 2:
+        params["num_class"] = num_classes
 
     # Criar aplicações cliente e servidor
     client_fn = create_client_fn(data_processor, num_local_boost_round, params)
@@ -518,7 +547,7 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     }
 
     print(f"\n{'*'*50}")
-    print(f"EXECUTANDO CATBOOST - ESTRATÉGIA: {train_method.upper()}")
+    print(f"EXECUTANDO LIGHTGBM - ESTRATÉGIA: {train_method.upper()}")
     print(f"{'*'*50}")
 
     result = safe_run_simulation(

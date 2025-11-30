@@ -2,30 +2,30 @@
 
 Implementação modular e refatorada de Federated Learning com modelos baseados em árvore (XGBoost, LightGBM, CatBoost) usando o framework Flower.
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 tcc_code/
-├── common/                    # 🔧 Módulos compartilhados
+├── common/                    # Módulos compartilhados
 │   ├── __init__.py
 │   ├── data_processing.py    # Processamento e particionamento do dataset HIGGS
 │   └── metrics_logger.py     # Cálculo de métricas (AUC, F1, etc.) e logging
 │
-├── algorithms/                # 🤖 Implementações de FL para cada algoritmo
+├── algorithms/                # Implementações de FL para cada algoritmo
 │   ├── __init__.py
 │   └── xgboost_fl.py         # Cliente, servidor e execução para XGBoost
 │
-├── archive/                   # 📦 Códigos funcionais originais (PRESERVADOS)
+├── archive/                   # Códigos funcionais originais (PRESERVADOS)
 │   ├── xgboost.py            # Código original XGBoost (funcional em Colab)
 │   ├── ligthGBM.py           # Código original LightGBM (funcional em Colab)
 │   └── catbbost.py           # Código original CatBoost (funcional em Colab)
 │
-├── run_experiments.py         # ▶️ Script principal de execução
-├── requirements.txt           # 📋 Dependências do projeto
-└── README.md                  # 📖 Este arquivo
+├── run_experiments.py         # Script principal de execução
+├── requirements.txt           # Dependências do projeto
+└── README.md                  # Este arquivo
 ```
 
-## 🚀 Instalação
+## Instalação
 
 ### 1. Criar ambiente virtual
 
@@ -46,9 +46,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 💻 Uso
+## Uso
 
-### ⚡ Execução Rápida - Scripts All-in-One
+### Execução Rápida - Scripts All-in-One
 
 **Para executar todos os experimentos de um algoritmo (Cyclic + Bagging):**
 
@@ -118,18 +118,18 @@ python run_experiments.py \
     --samples 2000
 ```
 
-## 📊 Métricas Coletadas
+## Métricas Coletadas
 
 Para cada rodada, são calculadas automaticamente:
-- ✅ **Acurácia** (Accuracy)
-- ✅ **Precisão** (Precision)
-- ✅ **Revocação** (Recall)
-- ✅ **F1-Score**
-- ✅ **AUC-ROC**
-- ✅ **Especificidade**
-- ✅ **Matriz de Confusão** (TN, FP, FN, TP)
+- **Acurácia** (Accuracy)
+- **Precisão** (Precision)
+- **Revocação** (Recall)
+- **F1-Score**
+- **AUC-ROC**
+- **Especificidade**
+- **Matriz de Confusão** (TN, FP, FN, TP)
 
-## 📈 Outputs
+## Outputs
 
 ### Sistema de Logging Estruturado
 
@@ -153,10 +153,10 @@ logs/
 ```
 
 **Vantagens dessa estrutura:**
-- ✅ Cada execução tem sua própria pasta com timestamp
-- ✅ Fácil identificar quando o experimento foi executado
-- ✅ Nunca sobrescreve resultados anteriores
-- ✅ README.md em cada pasta para navegação rápida
+- Cada execução tem sua própria pasta com timestamp
+- Fácil identificar quando o experimento foi executado
+- Nunca sobrescreve resultados anteriores
+- README.md em cada pasta para navegação rápida
 
 ### Arquivo de Log de Texto (.txt)
 
@@ -245,7 +245,7 @@ Métricas são impressas em tempo real (e salvas no arquivo .txt):
     FN:  498 | TP: 3402
 ```
 
-## 🏗️ Arquitetura Modular
+## Arquitetura Modular
 
 ### 1. `common/data_processing.py`
 - **DataProcessor**: Classe para carregar e particionar dataset HIGGS
@@ -271,36 +271,36 @@ Métricas são impressas em tempo real (e salvas no arquivo .txt):
 - Suporte automático para GPU/CPU
 - Estratégias Cyclic e Bagging
 
-## 🎯 Estratégias de Agregação
+## Estratégias de Agregação
 
 ### Cyclic (Cíclica)
-- ⚡ Treina **um cliente por rodada**, sequencialmente
-- 🔄 Modelo passa de cliente em cliente
-- ✅ Melhor para convergência gradual
-- 💾 Menor uso de memória
+- Treina **um cliente por rodada**, sequencialmente
+- Modelo passa de cliente em cliente
+- Melhor para convergência gradual
+- Menor uso de memória
 
 ### Bagging
-- 🚀 **Todos os clientes treinam em paralelo**
-- 🔀 Modelos são agregados no servidor
-- ⚡ Mais rápido (processamento paralelo)
-- 💻 Requer mais recursos computacionais
+- **Todos os clientes treinam em paralelo**
+- Modelos são agregados no servidor
+- Mais rápido (processamento paralelo)
+- Requer mais recursos computacionais
 
-## 📦 Códigos Originais (Archive)
+## Códigos Originais (Archive)
 
 Os códigos funcionais originais estão **preservados** em `archive/`:
 - `xgboost.py` - Código original do XGBoost (testado e funcional no Colab)
 - `ligthGBM.py` - Código original do LightGBM (testado e funcional no Colab)
 - `catbbost.py` - Código original do CatBoost (testado e funcional no Colab)
 
-**⚠️ Estes arquivos são referência e NÃO devem ser modificados.**
+**IMPORTANTE: Estes arquivos são referência e NÃO devem ser modificados.**
 
-## ✅ Status de Implementação
+## Status de Implementação
 
-- ✅ **XGBoost**: Totalmente funcional e modularizado para VSCode
-- ⏳ **LightGBM**: Em desenvolvimento (use `archive/ligthGBM.py` temporariamente)
-- ⏳ **CatBoost**: Em desenvolvimento (use `archive/catbbost.py` temporariamente)
+- **XGBoost**: Totalmente funcional e modularizado para VSCode
+- **LightGBM**: Em desenvolvimento (use `archive/ligthGBM.py` temporariamente)
+- **CatBoost**: Em desenvolvimento (use `archive/catbbost.py` temporariamente)
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Erro: "Module not found"
 Certifique-se de executar a partir do diretório correto:
@@ -326,7 +326,7 @@ Reinstale as dependências:
 pip install --upgrade -r requirements.txt
 ```
 
-## 🔬 Para Desenvolvedores
+## Para Desenvolvedores
 
 ### Estrutura de um Módulo de Algoritmo
 
@@ -367,7 +367,7 @@ def run_new_algorithm_experiment(data_processor, num_clients, ...):
     pass
 ```
 
-## 📚 Referências
+## Referências
 
 - **Flower Framework**: https://flower.ai/
 - **XGBoost**: https://xgboost.readthedocs.io/
@@ -375,10 +375,10 @@ def run_new_algorithm_experiment(data_processor, num_clients, ...):
 - **CatBoost**: https://catboost.ai/
 - **Dataset HIGGS**: https://huggingface.co/datasets/jxie/higgs
 
-## 📝 Licença
+## Licença
 
 Este código faz parte de um projeto de TCC (Trabalho de Conclusão de Curso) sobre **"Optimization of Federated Learning Models with SDN (Software-Defined Networking)"**.
 
 ---
 
-**Desenvolvido com 🤖 para TCC - Federated Learning com SDN**
+**Desenvolvido para TCC - Federated Learning com SDN**

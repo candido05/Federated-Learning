@@ -3,8 +3,8 @@ Módulo para Federated Learning com XGBoost
 Baseado no código funcional de archive/xgboost.py
 """
 
-import os
 import inspect
+import numpy as np
 import xgboost as xgb
 import torch
 from typing import Dict
@@ -312,14 +312,32 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
 
     log(INFO, f"GPU disponível: {USE_GPU} | tree_method: {tree_method}")
 
+    # Detectar número de classes do dataset
+    num_classes = len(np.unique(data_processor.y_test_all))
+    log(INFO, f"Número de classes detectadas: {num_classes}")
+
+    if num_classes == 2:
+        # Classificação binária
+        objective = "binary:logistic"
+        eval_metric = ["logloss", "error"]
+    else:
+        # Classificação multi-classe
+        objective = "multi:softprob"
+        eval_metric = ["mlogloss", "merror"]
+
     params = {
         "eta": 0.1,
         "max_depth": 6,
         "tree_method": tree_method,
         "verbosity": 0,
-        "objective": "binary:logistic",
-        "eval_metric": ["logloss", "error"],
+        "objective": objective,
+        "eval_metric": eval_metric,
+        "num_class": num_classes if num_classes > 2 else None,
     }
+
+    # Remover num_class se None
+    if params["num_class"] is None:
+        del params["num_class"]
 
     # Criar aplicações cliente e servidor
     client_fn = create_client_fn(data_processor, num_local_boost_round, params)
