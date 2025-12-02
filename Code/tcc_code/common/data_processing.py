@@ -60,12 +60,12 @@ class DataProcessor:
         self.class_weights = None
 
     def load_and_prepare_data(self):
-        """Carrega dataset de veículos e prepara para FL"""
+        """Carrega dataset de veículos e prepara para FL com particionamento por veículo"""
         log(INFO, f"Carregando dataset de CSV: {self.train_csv_path}")
-        X_train_all, y_train_all = self._load_csv(self.train_csv_path)
+        X_train_all, y_train_all, vehicle_ids_train = self._load_csv(self.train_csv_path)
 
         log(INFO, f"Carregando validação de CSV: {self.validation_csv_path}")
-        X_test_all, y_test_all = self._load_csv(self.validation_csv_path)
+        X_test_all, y_test_all, vehicle_ids_test = self._load_csv(self.validation_csv_path)
 
         total_samples = X_train_all.shape[0]
         log(INFO, f"Dataset de treino: {total_samples} amostras, {X_train_all.shape[1]} features")
@@ -73,19 +73,64 @@ class DataProcessor:
         log(INFO, f"Classes no treino: {np.unique(y_train_all)}")
         log(INFO, f"Classes na validação: {np.unique(y_test_all)}")
 
-        if self.use_all_data:
-            self.samples_per_client = total_samples // self.num_clients
-            log(INFO, f"Modo: Usando TODOS os {total_samples} dados")
-            log(INFO, f"Distribuição: ~{self.samples_per_client} amostras por cliente")
-        else:
-            log(WARNING, "Modo use_all_data=False não é recomendado. Usando todos os dados disponíveis.")
-            self.samples_per_client = total_samples // self.num_clients
+        if vehicle_ids_train is None:
+            log(WARNING, "Coluna 'vehicle_id' não encontrada! Usando particionamento IID tradicional.")
+            return self._partition_iid(X_train_all, y_train_all, X_test_all, y_test_all)
+
+        unique_vehicles = np.unique(vehicle_ids_train)
+        num_vehicles = len(unique_vehicles)
+        log(INFO, f"Número de veículos únicos detectados: {num_vehicles}")
 
         log(INFO, "Normalizando dados com StandardScaler...")
         self.scaler.fit(X_train_all)
         X_train_all = self.scaler.transform(X_train_all)
         X_test_all = self.scaler.transform(X_test_all)
 
+        np.random.seed(self.seed)
+        shuffled_vehicles = np.random.permutation(unique_vehicles)
+
+        vehicles_per_client = num_vehicles // self.num_clients
+        log(INFO, f"Particionando por veículo: {vehicles_per_client} veículos por cliente")
+
+        self.partitions_X = []
+        self.partitions_y = []
+        client_vehicles = []
+
+        for client_id in range(self.num_clients):
+            start_idx = client_id * vehicles_per_client
+            end_idx = start_idx + vehicles_per_client if client_id < self.num_clients - 1 else num_vehicles
+
+            client_vehicle_ids = shuffled_vehicles[start_idx:end_idx]
+            client_vehicles.append(client_vehicle_ids)
+
+            mask = np.isin(vehicle_ids_train, client_vehicle_ids)
+            client_X = X_train_all[mask]
+            client_y = y_train_all[mask]
+
+            self.partitions_X.append(client_X)
+            self.partitions_y.append(client_y)
+
+        self.X_test_all = X_test_all
+        self.y_test_all = y_test_all
+        self.samples_per_client = int(np.mean([len(p) for p in self.partitions_X]))
+
+        log(INFO, f"[OK] Dataset particionado por veículo com sucesso!")
+        log(INFO, f"  - Média de amostras por cliente: {self.samples_per_client}")
+        log(INFO, f"  - Total distribuído: {sum(len(p) for p in self.partitions_X)}")
+        log(INFO, f"  - Validação centralizada: {len(self.X_test_all)} amostras")
+
+        log(INFO, "\nDistribuição por cliente:")
+        for i, (y_part, veh_ids) in enumerate(zip(self.partitions_y, client_vehicles)):
+            unique, counts = np.unique(y_part, return_counts=True)
+            dist = dict(zip(unique, counts))
+            percentages = {k: f"{v/len(y_part)*100:.1f}%" for k, v in dist.items()}
+            log(INFO, f"  Cliente {i}: {len(y_part)} amostras | {len(veh_ids)} veículos | Classes: {percentages}")
+            log(INFO, f"    Veículos: {sorted(veh_ids.tolist())[:10]}{'...' if len(veh_ids) > 10 else ''}")
+
+        return self.partitions_X, self.partitions_y, self.X_test_all, self.y_test_all
+
+    def _partition_iid(self, X_train_all, y_train_all, X_test_all, y_test_all):
+        """Particionamento IID tradicional (fallback)"""
         from sklearn.utils import shuffle
         X_train_all, y_train_all = shuffle(X_train_all, y_train_all, random_state=self.seed)
 
@@ -93,34 +138,30 @@ class DataProcessor:
             X_train_all, y_train_all = self._balance_classes(X_train_all, y_train_all)
 
         total_samples = X_train_all.shape[0]
-        log(INFO, f"Particionando {total_samples} amostras entre {self.num_clients} clientes...")
+        log(INFO, f"Particionando {total_samples} amostras entre {self.num_clients} clientes (IID)...")
         self.partitions_X = np.array_split(X_train_all, self.num_clients)
         self.partitions_y = np.array_split(y_train_all, self.num_clients)
         self.X_test_all = X_test_all
         self.y_test_all = y_test_all
-
         self.samples_per_client = len(self.partitions_X[0])
 
-        log(INFO, f"[OK] Dataset particionado com sucesso!")
+        log(INFO, f"[OK] Dataset particionado (IID) com sucesso!")
         log(INFO, f"  - Amostras por cliente: {self.samples_per_client}")
         log(INFO, f"  - Total distribuído: {sum(len(p) for p in self.partitions_X)}")
-        log(INFO, f"  - Validação centralizada: {len(self.X_test_all)} amostras")
-
-        log(INFO, "\nDistribuição de classes por cliente:")
-        for i, y_part in enumerate(self.partitions_y):
-            unique, counts = np.unique(y_part, return_counts=True)
-            dist = dict(zip(unique, counts))
-            percentages = {k: f"{v/len(y_part)*100:.1f}%" for k, v in dist.items()}
-            log(INFO, f"  Cliente {i}: {len(y_part)} amostras - Classes: {percentages}")
 
         return self.partitions_X, self.partitions_y, self.X_test_all, self.y_test_all
 
     @staticmethod
     def _load_csv(csv_path: str):
-        """Carrega dataset de arquivo CSV"""
+        """Carrega dataset de arquivo CSV retornando também vehicle_id"""
         df = pd.read_csv(csv_path)
 
         cols_to_drop = []
+        vehicle_ids = None
+
+        if "vehicle_id" in df.columns:
+            vehicle_ids = df["vehicle_id"].values
+            cols_to_drop.append("vehicle_id")
 
         if "label" in df.columns:
             y = df["label"].values.astype(int)
@@ -129,18 +170,12 @@ class DataProcessor:
             log(WARNING, "Coluna 'label' não encontrada. Usando última coluna como label.")
             y = df.iloc[:, -1].values.astype(int)
 
-        non_feature_cols = ["vehicle_id"]
-        for col in non_feature_cols:
-            if col in df.columns:
-                cols_to_drop.append(col)
-                log(INFO, f"Removendo coluna não-feature: {col}")
-
         if cols_to_drop:
             X = df.drop(columns=cols_to_drop).values.astype(np.float32)
         else:
             X = df.iloc[:, :-1].values.astype(np.float32)
 
-        return X, y
+        return X, y, vehicle_ids
 
     def _balance_classes(self, X: np.ndarray, y: np.ndarray):
         """Aplica balanceamento de classes conforme estratégia configurada"""
