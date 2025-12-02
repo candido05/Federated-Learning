@@ -87,21 +87,7 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
                           num_server_rounds: int, num_local_boost_round: int,
                           train_method: str = "cyclic", seed: int = 42):
-    """
-    Executa experimento de Federated Learning com XGBoost
-
-    Args:
-        data_processor: Processador de dados já inicializado
-        num_clients: Número de clientes
-        num_server_rounds: Número de rodadas
-        num_local_boost_round: Rodadas locais de boosting
-        train_method: 'cyclic' ou 'bagging'
-        seed: Seed para reprodutibilidade
-
-    Returns:
-        Histórico de resultados
-    """
-    # Inicializar logger
+    """Executa experimento de Federated Learning com XGBoost"""
     logger = ExperimentLogger(
         algorithm_name="xgboost",
         strategy_name=train_method,
@@ -117,16 +103,13 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
 
     log(INFO, f"GPU disponível: {USE_GPU} | tree_method: {tree_method}")
 
-    # Detectar número de classes do dataset
     num_classes = len(np.unique(data_processor.y_test_all))
     log(INFO, f"Número de classes detectadas: {num_classes}")
 
     if num_classes == 2:
-        # Classificação binária
         objective = "binary:logistic"
         eval_metric = ["logloss", "error"]
     else:
-        # Classificação multi-classe
         objective = "multi:softprob"
         eval_metric = ["mlogloss", "merror"]
 

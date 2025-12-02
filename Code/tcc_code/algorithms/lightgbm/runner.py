@@ -78,21 +78,7 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
                             num_server_rounds: int, num_local_boost_round: int,
                             train_method: str = "cyclic", seed: int = 42):
-    """
-    Executa experimento de Federated Learning com LightGBM
-
-    Args:
-        data_processor: Processador de dados já inicializado
-        num_clients: Número de clientes
-        num_server_rounds: Número de rodadas
-        num_local_boost_round: Rodadas locais de boosting
-        train_method: 'cyclic' ou 'bagging'
-        seed: Seed para reprodutibilidade
-
-    Returns:
-        Histórico de resultados
-    """
-    # Inicializar logger
+    """Executa experimento de Federated Learning com LightGBM"""
     logger = ExperimentLogger(
         algorithm_name="lightgbm",
         strategy_name=train_method,
@@ -108,7 +94,6 @@ def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
 
     log(INFO, f"GPU disponível: {USE_GPU} | device: {device_type}")
 
-    # Detectar número de classes
     num_classes = len(np.unique(data_processor.y_test_all))
     log(INFO, f"Número de classes detectadas: {num_classes}")
 

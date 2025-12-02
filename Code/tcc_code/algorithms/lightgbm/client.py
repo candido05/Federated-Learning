@@ -12,6 +12,26 @@ from logging import INFO, WARNING
 from common import calculate_comprehensive_metrics, print_metrics_summary
 
 
+class VerboseCallback:
+    """Callback para mostrar progresso detalhado do treinamento no terminal"""
+
+    def __init__(self, client_id: int, global_round: int, num_rounds: int):
+        self.client_id = client_id
+        self.global_round = global_round
+        self.num_rounds = num_rounds
+
+    def __call__(self, env):
+        """Chamado após cada iteração de boosting"""
+        iteration = env.iteration
+
+        if env.evaluation_result_list:
+            result = env.evaluation_result_list[0]
+            metric_value = result[2]
+
+            print(f"  [Cliente {self.client_id}] Round {self.global_round} | Época {iteration+1:2d}/{self.num_rounds:2d} | "
+                  f"Valid: {metric_value:.4f}")
+
+
 class LightGBMClient(Client):
     """Cliente Federated Learning para LightGBM"""
 
@@ -33,17 +53,24 @@ class LightGBMClient(Client):
         log(INFO, f"[Client {self.cid}] fit, config: {ins.config}")
         global_round = int(ins.config.get("global_round", "0"))
 
+        print(f"\n{'─'*80}")
+        print(f"[Cliente {self.cid}] INICIANDO TREINAMENTO - Round {global_round}")
+        print(f"  Amostras treino: {self.num_train} | Amostras validação: {self.num_val}")
+        print(f"  Épocas locais: {self.num_local_round}")
+        print(f"{'─'*80}")
+
+        verbose_callback = VerboseCallback(self.cid, global_round, self.num_local_round)
+
         if global_round <= 1 or not ins.parameters.tensors:
-            # Primeira rodada: treinar do zero
             bst = lgb.train(
                 self.params,
                 self.train_data,
                 num_boost_round=self.num_local_round,
                 valid_sets=[self.valid_data],
                 valid_names=['valid'],
+                callbacks=[verbose_callback],
             )
         else:
-            # Carregar modelo global e continuar treinamento
             try:
                 global_model_bytes = bytearray(ins.parameters.tensors[0])
                 temp_model_path = f"/tmp/lgb_global_model_{self.cid}_{global_round}.txt"
@@ -51,7 +78,6 @@ class LightGBMClient(Client):
                 with open(temp_model_path, 'wb') as f:
                     f.write(global_model_bytes)
 
-                # Carregar modelo e continuar treinamento
                 bst = lgb.train(
                     self.params,
                     self.train_data,
@@ -59,6 +85,7 @@ class LightGBMClient(Client):
                     init_model=temp_model_path,
                     valid_sets=[self.valid_data],
                     valid_names=['valid'],
+                    callbacks=[verbose_callback],
                 )
 
                 if os.path.exists(temp_model_path):
@@ -72,9 +99,13 @@ class LightGBMClient(Client):
                     num_boost_round=self.num_local_round,
                     valid_sets=[self.valid_data],
                     valid_names=['valid'],
+                    callbacks=[verbose_callback],
                 )
 
-        # Calcular métricas avançadas
+        print(f"{'─'*80}")
+        print(f"[Cliente {self.cid}] TREINAMENTO CONCLUÍDO - Round {global_round}")
+        print(f"{'─'*80}\n")
+
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = bst.predict(self.X_valid)
@@ -83,7 +114,6 @@ class LightGBMClient(Client):
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Erro ao calcular métricas: {e}")
 
-        # Salvar modelo local
         temp_save_path = f"/tmp/lgb_local_model_{self.cid}_{global_round}.txt"
         bst.save_model(temp_save_path)
 
@@ -110,7 +140,6 @@ class LightGBMClient(Client):
                 metrics={"accuracy": 0.5, "precision": 0.0, "recall": 0.0, "f1_score": 0.0, "auc": 0.5}
             )
 
-        # Carregar modelo
         temp_model_path = f"/tmp/lgb_eval_model_{self.cid}.txt"
         model_bytes = bytearray(ins.parameters.tensors[0])
 
@@ -122,7 +151,6 @@ class LightGBMClient(Client):
         if os.path.exists(temp_model_path):
             os.remove(temp_model_path)
 
-        # Calcular métricas avançadas
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = bst.predict(self.X_valid)

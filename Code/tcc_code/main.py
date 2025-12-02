@@ -12,7 +12,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Adicionar diretório ao path
 sys.path.append(str(Path(__file__).parent))
 
 from common import DataProcessor
@@ -20,22 +19,14 @@ from algorithms.xgboost import run_xgboost_experiment
 from algorithms.lightgbm import run_lightgbm_experiment
 from algorithms.catboost import run_catboost_experiment
 
-# ============================================================================
-# CONFIGURAÇÕES DO EXPERIMENTO
-# ============================================================================
-
-# Caminhos dos CSVs de veículos (FIXOS)
-# Detecta se está rodando no WSL ou Windows
 import os
 import platform
 
 def get_csv_path(relative_path):
     """Converte caminho relativo para absoluto, compatível com WSL e Windows"""
     if platform.system() == "Linux" and os.path.exists("/mnt/c"):
-        # WSL: usar caminho /mnt/c/...
         base = "/mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning"
     else:
-        # Windows: usar caminho C:\...
         base = r"C:\Users\candi\OneDrive\Desktop\Federated-Learning"
 
     return os.path.join(base, relative_path)
@@ -43,14 +34,13 @@ def get_csv_path(relative_path):
 TRAIN_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_all_vehicles.csv")
 VALIDATION_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_validation_all_vehicles.csv")
 
-# Configurações padrão
 DEFAULT_CONFIG = {
-    "num_clients": 3,               # Número de clientes FL (REDUZIDO para economizar memória)
-    "num_server_rounds": 10,        # Rodadas de comunicação servidor-cliente
-    "num_local_boost_round": 20,    # Rodadas de boosting em cada cliente
-    "seed": 42,                     # Seed para reprodutibilidade
-    "use_all_data": True,           # Usar TODOS os dados (115,511 amostras)
-    "balance_strategy": None        # Balanceamento de classes: None, 'oversample', 'smote', 'undersample', 'weights'
+    "num_clients": 3,
+    "num_server_rounds": 10,
+    "num_local_boost_round": 20,
+    "seed": 42,
+    "use_all_data": True,
+    "balance_strategy": None
 }
 
 
@@ -85,8 +75,6 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
     print(f"{'='*80}\n")
 
     try:
-        # Preparar dados (SEMPRE com os CSVs de veículos)
-        # Usa TODOS os 115,511 dados distribuídos entre os clientes
         data_processor = DataProcessor(
             num_clients=config['num_clients'],
             seed=config['seed'],
@@ -97,7 +85,6 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
         )
         data_processor.load_and_prepare_data()
 
-        # Executar algoritmo específico
         if algorithm == "xgboost":
             result = run_xgboost_experiment(
                 data_processor=data_processor,
@@ -174,7 +161,6 @@ def run_all_experiments(algorithms: list, strategies: list, config: dict):
 
             result = run_single_experiment(algorithm, strategy, config)
 
-            # Verificar sucesso baseado no dicionário retornado
             if result is not None and isinstance(result, dict) and result.get("success", False):
                 all_results[experiment_name] = result
                 print(f"[OK] {experiment_name} concluído ({current_experiment}/{total_experiments})")
@@ -271,29 +257,25 @@ IMPORTANTE:
 
     args = parser.parse_args()
 
-    # Configuração do experimento
     config = {
         "num_clients": args.num_clients,
         "num_server_rounds": args.num_rounds,
         "num_local_boost_round": args.local_rounds,
         "seed": args.seed,
-        "use_all_data": True,  # SEMPRE usa todos os dados
+        "use_all_data": True,
         "balance_strategy": args.balance
     }
 
-    # Determinar algoritmos a executar
     if args.algorithm == "all":
         algorithms = ["xgboost", "lightgbm", "catboost"]
     else:
         algorithms = [args.algorithm]
 
-    # Determinar estratégias a executar
     if args.strategy == "both":
         strategies = ["cyclic", "bagging"]
     else:
         strategies = [args.strategy]
 
-    # Executar experimentos
     print(f"\n{'='*80}")
     print("FEDERATED LEARNING - TREE-BASED MODELS (DATASET DE VEÍCULOS)")
     print(f"{'='*80}")
@@ -309,10 +291,8 @@ IMPORTANTE:
     print(f"  Seed: {config['seed']}")
     print(f"{'='*80}\n")
 
-    # Executar
     all_results = run_all_experiments(algorithms, strategies, config)
 
-    # Resumo final
     print(f"\n{'='*80}")
     print("RESUMO DOS EXPERIMENTOS")
     print(f"{'='*80}")
@@ -329,10 +309,6 @@ IMPORTANTE:
     print("[SUCESSO] Experimentos concluídos! Verifique a pasta 'logs/' para resultados detalhados.\n")
     return 0
 
-
-# ============================================================================
-# EXECUÇÃO
-# ============================================================================
 
 if __name__ == "__main__":
     sys.exit(main())

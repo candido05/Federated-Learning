@@ -14,15 +14,6 @@ class ExperimentLogger:
 
     def __init__(self, algorithm_name: str, strategy_name: str, num_clients: int,
                  num_rounds: int, num_local_rounds: int, samples_per_client: int):
-        """
-        Args:
-            algorithm_name: Nome do algoritmo (xgboost, lightgbm, catboost)
-            strategy_name: Nome da estratégia (cyclic, bagging)
-            num_clients: Número de clientes
-            num_rounds: Número de rodadas
-            num_local_rounds: Número de rodadas locais
-            samples_per_client: Amostras por cliente
-        """
         self.algorithm_name = algorithm_name
         self.strategy_name = strategy_name
         self.num_clients = num_clients
@@ -33,12 +24,10 @@ class ExperimentLogger:
         self.metrics_history = {}
         self.round_logs = []
 
-        # Criar estrutura de diretórios com data/hora
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         self.log_dir = f"logs/{algorithm_name}/{timestamp}_{strategy_name}"
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # Arquivos de log na pasta específica
         self.log_file = f"{self.log_dir}/execution_log.txt"
         self.json_file = f"{self.log_dir}/metrics.json"
 
@@ -62,17 +51,9 @@ class ExperimentLogger:
         self._write_to_file(header)
 
     def log_round_metrics(self, round_num: int, metrics: Dict, source: str = "server"):
-        """
-        Loga métricas de uma rodada
-
-        Args:
-            round_num: Número da rodada
-            metrics: Dicionário com métricas
-            source: Fonte das métricas ('server', 'client_X', 'aggregated')
-        """
+        """Loga métricas de uma rodada"""
         self.metrics_history[round_num] = metrics
 
-        # Formatar saída
         log_text = f"\n[{source.upper()}] Round {round_num} Métricas de Performance:\n"
         log_text += f"  Acurácia:    {metrics.get('accuracy', 0):.4f}\n"
         log_text += f"  Precisão:    {metrics.get('precision', 0):.4f}\n"
@@ -97,7 +78,6 @@ class ExperimentLogger:
         print(log_text)
         self._write_to_file(log_text)
 
-        # Armazenar para histórico
         self.round_logs.append({
             "round": round_num,
             "source": source,
@@ -119,7 +99,6 @@ class ExperimentLogger:
         """Finaliza experimento e salva métricas"""
         elapsed_time = time.time() - self.start_time if self.start_time else 0
 
-        # Criar resumo das métricas por rodada
         summary = f"\n{'='*80}\n"
         summary += "RESUMO DAS MÉTRICAS POR RODADA:\n"
         summary += f"{'='*80}\n\n"
@@ -145,7 +124,6 @@ class ExperimentLogger:
         footer += f"Total de rodadas executadas: {len(self.metrics_history)}\n"
         footer += f"{'='*80}\n\n"
 
-        # Adicionar resumo do histórico
         if final_history:
             footer += "HISTÓRICO FINAL:\n"
             footer += f"{final_history}\n"
@@ -154,7 +132,6 @@ class ExperimentLogger:
         print(footer)
         self._write_to_file(footer)
 
-        # Salvar JSON completo
         complete_data = {
             "experiment_info": {
                 "algorithm": self.algorithm_name,
@@ -175,7 +152,6 @@ class ExperimentLogger:
             with open(self.json_file, 'w', encoding='utf-8') as f:
                 json.dump(complete_data, f, indent=2, ensure_ascii=False)
 
-            # Criar arquivo README na pasta do experimento
             self._create_readme(elapsed_time)
 
             print(f"\n{'='*80}")

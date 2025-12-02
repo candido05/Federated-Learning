@@ -33,12 +33,16 @@ class CatBoostClient(Client):
         log(INFO, f"[Client {self.cid}] fit, config: {ins.config}")
         global_round = int(ins.config.get("global_round", "0"))
 
+        print(f"\n{'─'*80}")
+        print(f"[Cliente {self.cid}] INICIANDO TREINAMENTO - Round {global_round}")
+        print(f"  Amostras treino: {self.num_train} | Amostras validação: {self.num_val}")
+        print(f"  Épocas locais: {self.num_local_round}")
+        print(f"{'─'*80}")
+
         if global_round <= 1 or not ins.parameters.tensors:
-            # Primeira rodada: treinar do zero
             model = CatBoost(self.params)
-            model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False)
+            model.fit(self.train_pool, eval_set=self.valid_pool, verbose=10)
         else:
-            # Carregar modelo global e continuar treinamento
             try:
                 global_model_bytes = bytearray(ins.parameters.tensors[0])
                 temp_model_path = f"/tmp/catboost_global_model_{self.cid}_{global_round}.cbm"
@@ -47,7 +51,7 @@ class CatBoostClient(Client):
 
                 model = CatBoost(self.params)
                 model.load_model(temp_model_path)
-                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False, init_model=model)
+                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=10, init_model=model)
 
                 if os.path.exists(temp_model_path):
                     os.remove(temp_model_path)
@@ -55,22 +59,22 @@ class CatBoostClient(Client):
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Falha ao carregar modelo global: {e}; treinando do zero.")
                 model = CatBoost(self.params)
-                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=False)
+                model.fit(self.train_pool, eval_set=self.valid_pool, verbose=10)
 
-        # Calcular métricas avançadas
+        print(f"{'─'*80}")
+        print(f"[Cliente {self.cid}] TREINAMENTO CONCLUÍDO - Round {global_round}")
+        print(f"{'─'*80}\n")
+
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = model.predict(self.valid_pool, prediction_type='Probability')
-                # Se multi-classe, y_pred_proba já é 2D; se binário, pode ser 1D ou 2D
                 if len(y_pred_proba.shape) == 2 and y_pred_proba.shape[1] == 2:
-                    # Binário com 2 colunas: usar apenas probabilidade da classe positiva
                     y_pred_proba = y_pred_proba[:, 1]
                 metrics = calculate_comprehensive_metrics(self.y_valid, y_pred_proba)
                 print_metrics_summary(metrics, client_id=self.cid, round_num=global_round)
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Erro ao calcular métricas: {e}")
 
-        # Salvar modelo local
         temp_save_path = f"/tmp/catboost_local_model_{self.cid}_{global_round}.cbm"
         model.save_model(temp_save_path, format='cbm')
 
@@ -97,7 +101,6 @@ class CatBoostClient(Client):
                 metrics={"accuracy": 0.5, "precision": 0.0, "recall": 0.0, "f1_score": 0.0, "auc": 0.5}
             )
 
-        # Carregar modelo
         temp_model_path = f"/tmp/catboost_eval_model_{self.cid}.cbm"
         model_bytes = bytearray(ins.parameters.tensors[0])
 
@@ -110,13 +113,10 @@ class CatBoostClient(Client):
         if os.path.exists(temp_model_path):
             os.remove(temp_model_path)
 
-        # Calcular métricas avançadas
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = model.predict(self.valid_pool, prediction_type='Probability')
-                # Se multi-classe, y_pred_proba já é 2D; se binário, pode ser 1D ou 2D
                 if len(y_pred_proba.shape) == 2 and y_pred_proba.shape[1] == 2:
-                    # Binário com 2 colunas: usar apenas probabilidade da classe positiva
                     y_pred_proba = y_pred_proba[:, 1]
                 comprehensive_metrics = calculate_comprehensive_metrics(self.y_valid, y_pred_proba)
 

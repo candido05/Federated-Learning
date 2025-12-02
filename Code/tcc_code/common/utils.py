@@ -4,18 +4,7 @@ Funções utilitárias para Federated Learning
 
 
 def replace_keys(input_dict, match="-", target="_"):
-    """
-    Substitui caracteres em chaves de dicionário recursivamente
-    Usado para converter configurações do Flower
-
-    Args:
-        input_dict: Dicionário a processar
-        match: Caractere a procurar (padrão: "-")
-        target: Caractere para substituir (padrão: "_")
-
-    Returns:
-        Novo dicionário com chaves modificadas
-    """
+    """Substitui caracteres em chaves de dicionário recursivamente"""
     new_dict = {}
     for key, value in input_dict.items():
         new_key = key.replace(match, target)

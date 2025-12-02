@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-# Imports para balanceamento de classes
 try:
     from imblearn.over_sampling import SMOTE, RandomOverSampler
     from imblearn.under_sampling import RandomUnderSampler
@@ -53,29 +52,21 @@ class DataProcessor:
         self.train_csv_path = train_csv_path
         self.validation_csv_path = validation_csv_path
 
-        # Dados particionados
         self.partitions_X = None
         self.partitions_y = None
         self.X_test_all = None
         self.y_test_all = None
-        self.samples_per_client = None  # Calculado automaticamente
-        self.class_weights = None  # Pesos de classe (se balance_strategy='weights')
+        self.samples_per_client = None
+        self.class_weights = None
 
     def load_and_prepare_data(self):
-        """
-        Carrega dataset de veículos e prepara para FL
-
-        Se use_all_data=True, distribui TODOS os dados igualmente entre os clientes
-        """
-
-        # Carregar CSVs
+        """Carrega dataset de veículos e prepara para FL"""
         log(INFO, f"Carregando dataset de CSV: {self.train_csv_path}")
         X_train_all, y_train_all = self._load_csv(self.train_csv_path)
 
         log(INFO, f"Carregando validação de CSV: {self.validation_csv_path}")
         X_test_all, y_test_all = self._load_csv(self.validation_csv_path)
 
-        # Log informações do dataset
         total_samples = X_train_all.shape[0]
         log(INFO, f"Dataset de treino: {total_samples} amostras, {X_train_all.shape[1]} features")
         log(INFO, f"Dataset de validação: {X_test_all.shape[0]} amostras")
@@ -83,7 +74,6 @@ class DataProcessor:
         log(INFO, f"Classes na validação: {np.unique(y_test_all)}")
 
         if self.use_all_data:
-            # Usar TODOS os dados distribuídos igualmente
             self.samples_per_client = total_samples // self.num_clients
             log(INFO, f"Modo: Usando TODOS os {total_samples} dados")
             log(INFO, f"Distribuição: ~{self.samples_per_client} amostras por cliente")
@@ -91,29 +81,24 @@ class DataProcessor:
             log(WARNING, "Modo use_all_data=False não é recomendado. Usando todos os dados disponíveis.")
             self.samples_per_client = total_samples // self.num_clients
 
-        # Normalização
         log(INFO, "Normalizando dados com StandardScaler...")
         self.scaler.fit(X_train_all)
         X_train_all = self.scaler.transform(X_train_all)
         X_test_all = self.scaler.transform(X_test_all)
 
-        # Shuffle para garantir distribuição IID
         from sklearn.utils import shuffle
         X_train_all, y_train_all = shuffle(X_train_all, y_train_all, random_state=self.seed)
 
-        # Aplicar balanceamento de classes (se solicitado)
         if self.balance_strategy:
             X_train_all, y_train_all = self._balance_classes(X_train_all, y_train_all)
 
-        # Particionamento IID (divisão igual)
-        total_samples = X_train_all.shape[0]  # Recalcular após balanceamento
+        total_samples = X_train_all.shape[0]
         log(INFO, f"Particionando {total_samples} amostras entre {self.num_clients} clientes...")
         self.partitions_X = np.array_split(X_train_all, self.num_clients)
         self.partitions_y = np.array_split(y_train_all, self.num_clients)
         self.X_test_all = X_test_all
         self.y_test_all = y_test_all
 
-        # Recalcular samples_per_client real (pode variar ligeiramente devido ao arredondamento)
         self.samples_per_client = len(self.partitions_X[0])
 
         log(INFO, f"[OK] Dataset particionado com sucesso!")
@@ -121,7 +106,6 @@ class DataProcessor:
         log(INFO, f"  - Total distribuído: {sum(len(p) for p in self.partitions_X)}")
         log(INFO, f"  - Validação centralizada: {len(self.X_test_all)} amostras")
 
-        # Verificar distribuição de classes por cliente
         log(INFO, "\nDistribuição de classes por cliente:")
         for i, y_part in enumerate(self.partitions_y):
             unique, counts = np.unique(y_part, return_counts=True)
@@ -136,53 +120,36 @@ class DataProcessor:
         """Carrega dataset de arquivo CSV"""
         df = pd.read_csv(csv_path)
 
-        # Identificar colunas a remover (label e colunas não-features)
         cols_to_drop = []
 
-        # Coluna de label
         if "label" in df.columns:
             y = df["label"].values.astype(int)
             cols_to_drop.append("label")
         else:
-            # Se não há coluna 'label', assume que a última coluna é o label
             log(WARNING, "Coluna 'label' não encontrada. Usando última coluna como label.")
             y = df.iloc[:, -1].values.astype(int)
 
-        # Colunas não-features (IDs, metadados, etc.)
         non_feature_cols = ["vehicle_id"]
         for col in non_feature_cols:
             if col in df.columns:
                 cols_to_drop.append(col)
                 log(INFO, f"Removendo coluna não-feature: {col}")
 
-        # Separar features
         if cols_to_drop:
             X = df.drop(columns=cols_to_drop).values.astype(np.float32)
         else:
-            # Se não há label identificado, remove última coluna
             X = df.iloc[:, :-1].values.astype(np.float32)
 
         return X, y
 
     def _balance_classes(self, X: np.ndarray, y: np.ndarray):
-        """
-        Aplica balanceamento de classes conforme estratégia configurada
-
-        Args:
-            X: Features
-            y: Labels
-
-        Returns:
-            X_balanced, y_balanced: Dados balanceados
-        """
-        # Mostrar distribuição original
+        """Aplica balanceamento de classes conforme estratégia configurada"""
         unique, counts = np.unique(y, return_counts=True)
         log(INFO, f"\n[BALANCEAMENTO] Distribuição original de classes:")
         for cls, count in zip(unique, counts):
             log(INFO, f"  Classe {cls}: {count} ({count/len(y)*100:.1f}%)")
 
         if self.balance_strategy == 'weights':
-            # Calcular pesos de classe (não modifica dados)
             from sklearn.utils.class_weight import compute_class_weight
             classes = np.unique(y)
             class_weights = compute_class_weight('balanced', classes=classes, y=y)
@@ -194,7 +161,6 @@ class DataProcessor:
 
             return X, y
 
-        # Estratégias que modificam os dados
         if not IMBALANCE_AVAILABLE:
             log(WARNING, "[BALANCEAMENTO] imblearn não disponível! Instale com: pip install imbalanced-learn")
             log(WARNING, "  Usando dados sem balanceamento.")
@@ -206,7 +172,6 @@ class DataProcessor:
                 log(INFO, f"\n[BALANCEAMENTO] Estratégia: Random Oversampling")
 
             elif self.balance_strategy == 'smote':
-                # SMOTE requer k_neighbors < número de amostras da menor classe
                 min_samples = min(counts)
                 k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
                 sampler = SMOTE(random_state=self.seed, k_neighbors=k_neighbors)
@@ -220,10 +185,8 @@ class DataProcessor:
                 log(WARNING, f"[BALANCEAMENTO] Estratégia '{self.balance_strategy}' desconhecida. Opções: oversample, smote, undersample, weights")
                 return X, y
 
-            # Aplicar balanceamento
             X_balanced, y_balanced = sampler.fit_resample(X, y)
 
-            # Mostrar distribuição balanceada
             unique_bal, counts_bal = np.unique(y_balanced, return_counts=True)
             log(INFO, f"  Distribuição balanceada:")
             for cls, count in zip(unique_bal, counts_bal):

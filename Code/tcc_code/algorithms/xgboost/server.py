@@ -36,7 +36,6 @@ def get_evaluate_fn(data_processor: DataProcessor, params: Dict, logger: Experim
                 y_pred_proba = bst.predict(test_dmatrix)
                 comprehensive_metrics = calculate_comprehensive_metrics(data_processor.y_test_all, y_pred_proba)
 
-                # Log usando o logger se disponível
                 if logger:
                     logger.log_round_metrics(server_round, comprehensive_metrics, source="server")
                 else:
@@ -77,12 +76,8 @@ class FedXgbBaggingCustom(FedAvg):
         if not results:
             return None, {}
 
-        # Para bagging, pega o último modelo (todos treinaram do mesmo ponto inicial)
-        # Em uma implementação real de bagging, você faria ensemble ou média
-        # Aqui simplificamos pegando o último modelo
         _, fit_res = results[-1]
 
-        # Avaliar manualmente no servidor
         if self.data_processor and self.params and fit_res.parameters.tensors:
             self._evaluate_on_server(server_round, fit_res.parameters)
 

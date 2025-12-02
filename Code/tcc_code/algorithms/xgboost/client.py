@@ -3,12 +3,34 @@ Cliente Federated Learning para XGBoost
 """
 
 import xgboost as xgb
+from xgboost.callback import TrainingCallback
 from flwr.client import Client
 from flwr.common import Code, EvaluateIns, EvaluateRes, FitIns, FitRes, Parameters, Status
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
 from common import calculate_comprehensive_metrics, print_metrics_summary
+
+
+class VerboseCallback(TrainingCallback):
+    """Callback para mostrar progresso detalhado do treinamento no terminal"""
+
+    def __init__(self, client_id: int, global_round: int):
+        self.client_id = client_id
+        self.global_round = global_round
+
+    def after_iteration(self, model, epoch: int, evals_log: dict):
+        if evals_log:
+            train_metrics = evals_log.get('train', {})
+            val_metrics = evals_log.get('validate', {})
+
+            train_metric = list(train_metrics.values())[0][-1] if train_metrics else 0.0
+            val_metric = list(val_metrics.values())[0][-1] if val_metrics else 0.0
+
+            print(f"  [Cliente {self.client_id}] Round {self.global_round} | Época {epoch+1:2d} | "
+                  f"Train: {train_metric:.4f} | Valid: {val_metric:.4f}")
+
+        return False
 
 
 class XGBoostClient(Client):
@@ -32,17 +54,24 @@ class XGBoostClient(Client):
         log(INFO, f"[Client {self.cid}] fit, config: {ins.config}")
         global_round = int(ins.config.get("global_round", "0"))
 
+        print(f"\n{'─'*80}")
+        print(f"[Cliente {self.cid}] INICIANDO TREINAMENTO - Round {global_round}")
+        print(f"  Amostras treino: {self.num_train} | Amostras validação: {self.num_val}")
+        print(f"  Épocas locais: {self.num_local_round}")
+        print(f"{'─'*80}")
+
+        verbose_callback = VerboseCallback(self.cid, global_round)
+
         if global_round <= 1 or not ins.parameters.tensors:
-            # Primeira rodada: treinar do zero
             bst = xgb.train(
                 self.params,
                 self.train_dmatrix,
                 num_boost_round=self.num_local_round,
                 evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
                 verbose_eval=False,
+                callbacks=[verbose_callback],
             )
         else:
-            # Carregar modelo global e continuar treinamento
             try:
                 global_model = bytearray(ins.parameters.tensors[0])
                 global_bst = xgb.Booster(params=self.params)
@@ -54,6 +83,7 @@ class XGBoostClient(Client):
                     evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
                     xgb_model=global_bst,
                     verbose_eval=False,
+                    callbacks=[verbose_callback],
                 )
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Falha ao carregar modelo global: {e}; treinando do zero.")
@@ -63,9 +93,13 @@ class XGBoostClient(Client):
                     num_boost_round=self.num_local_round,
                     evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
                     verbose_eval=False,
+                    callbacks=[verbose_callback],
                 )
 
-        # Calcular métricas avançadas
+        print(f"{'─'*80}")
+        print(f"[Cliente {self.cid}] TREINAMENTO CONCLUÍDO - Round {global_round}")
+        print(f"{'─'*80}\n")
+
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = bst.predict(self.valid_dmatrix)
@@ -74,7 +108,6 @@ class XGBoostClient(Client):
             except Exception as e:
                 log(WARNING, f"[Client {self.cid}] Erro ao calcular métricas: {e}")
 
-        # Salvar modelo como bytes
         local_model = bst.save_raw("json")
         local_model_bytes = bytes(local_model)
 
@@ -99,7 +132,6 @@ class XGBoostClient(Client):
         para_b = bytearray(ins.parameters.tensors[0])
         bst.load_model(para_b)
 
-        # Calcular métricas avançadas
         if self.X_valid is not None and self.y_valid is not None:
             try:
                 y_pred_proba = bst.predict(self.valid_dmatrix)

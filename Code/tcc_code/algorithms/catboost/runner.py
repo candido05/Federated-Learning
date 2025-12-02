@@ -78,21 +78,7 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
                             num_server_rounds: int, num_local_boost_round: int,
                             train_method: str = "cyclic", seed: int = 42):
-    """
-    Executa experimento de Federated Learning com CatBoost
-
-    Args:
-        data_processor: Processador de dados já inicializado
-        num_clients: Número de clientes
-        num_server_rounds: Número de rodadas
-        num_local_boost_round: Rodadas locais de boosting
-        train_method: 'cyclic' ou 'bagging'
-        seed: Seed para reprodutibilidade
-
-    Returns:
-        Histórico de resultados
-    """
-    # Inicializar logger
+    """Executa experimento de Federated Learning com CatBoost"""
     logger = ExperimentLogger(
         algorithm_name="catboost",
         strategy_name=train_method,
@@ -133,14 +119,12 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     if num_classes > 2:
         params["classes_count"] = num_classes
 
-    # Criar aplicações cliente e servidor
     client_fn = create_client_fn(data_processor, num_local_boost_round, params)
     client_app = ClientApp(client_fn=client_fn)
 
     server_fn = create_server_fn(data_processor, num_server_rounds, params, logger)
     server_app = ServerApp(server_fn=server_fn)
 
-    # Configurar recursos
     backend_config = {
         "client_resources": {
             "num_cpus": 1.0,
