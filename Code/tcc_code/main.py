@@ -36,11 +36,13 @@ VALIDATION_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_va
 
 DEFAULT_CONFIG = {
     "num_clients": 3,
-    "num_server_rounds": 10,
-    "num_local_boost_round": 20,
+    "num_server_rounds": 50,  # 50 rodadas globais
+    "num_local_boost_round": 50,  # 50 rodadas locais
     "seed": 42,
-    "use_all_data": True,
-    "balance_strategy": None
+    "use_all_data": False,  # Usar apenas subset de veículos
+    "vehicles_per_client": 40,  # 40 veículos por cliente (120 total de 400)
+    "balance_strategy": "oversample",  # Opções: oversample, smote, undersample, combined
+    "stratified": True  # Stratified sampling ativo
 }
 
 
@@ -68,10 +70,14 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
     print(f"Dataset: {TRAIN_CSV}")
     print(f"Validação: {VALIDATION_CSV}")
     print(f"Clientes: {config['num_clients']}")
-    print(f"Rodadas: {config['num_server_rounds']}")
-    print(f"Boosting local: {config['num_local_boost_round']}")
-    print(f"Usar todos os dados: {'Sim (115,511 amostras)' if config.get('use_all_data', True) else 'Não'}")
-    print(f"Balanceamento: {config.get('balance_strategy', 'Nenhum')}")
+    print(f"Rodadas Globais: {config['num_server_rounds']}")
+    print(f"Rodadas Locais: {config['num_local_boost_round']}")
+    print(f"Veículos por Cliente: {config.get('vehicles_per_client', 'Todos')}")
+    print(f"Stratified Sampling: {'Sim' if config.get('stratified', True) else 'Não'}")
+
+    balance_strat = config.get('balance_strategy', None)
+    balance_display = balance_strat.upper() if balance_strat else 'NENHUM'
+    print(f"Balanceamento: {balance_display}")
     print(f"{'='*80}\n")
 
     try:
@@ -81,7 +87,9 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
             train_csv_path=TRAIN_CSV,
             validation_csv_path=VALIDATION_CSV,
             use_all_data=config.get('use_all_data', True),
-            balance_strategy=config.get('balance_strategy', None)
+            balance_strategy=config.get('balance_strategy', None),
+            vehicles_per_client=config.get('vehicles_per_client', None),
+            stratified=config.get('stratified', True)
         )
         data_processor.load_and_prepare_data()
 

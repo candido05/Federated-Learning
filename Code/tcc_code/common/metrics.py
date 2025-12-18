@@ -1,5 +1,6 @@
 """
-Cálculo de métricas para classificação binária e multi-classe
+Cálculo de métricas para classificação multi-classe (3 classes fixas)
+Dataset: Veículos com 3 classes de comportamento
 Compartilhado por todos os algoritmos (XGBoost, LightGBM, CatBoost)
 """
 
@@ -12,99 +13,129 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
+    balanced_accuracy_score,
+    matthews_corrcoef,
 )
 from flwr.common.logger import log
 from logging import WARNING
 
+# Constantes do dataset
+NUM_CLASSES = 3  # Dataset de veículos sempre tem 3 classes
+
 
 def calculate_comprehensive_metrics(y_true, y_pred_proba, threshold=0.5) -> Dict:
-    """Calcula métricas abrangentes para classificação binária ou multi-classe"""
-    num_classes = len(np.unique(y_true))
-    is_binary = num_classes == 2
+    """
+    Calcula métricas para classificação multi-classe (3 classes)
 
-    if is_binary:
-        if len(y_pred_proba.shape) == 1:
-            y_pred = (y_pred_proba >= threshold).astype(int)
-        else:
-            y_pred = np.argmax(y_pred_proba, axis=1)
+    Args:
+        y_true: Labels verdadeiros
+        y_pred_proba: Probabilidades preditas (shape: [n_samples, 3])
+        threshold: Não usado em multi-classe (mantido por compatibilidade)
+
+    Returns:
+        Dict com métricas: accuracy, precision, recall, F1, AUC, confusion matrix
+    """
+    # Obter predições (argmax das probabilidades)
+    if len(y_pred_proba.shape) == 1:
+        y_pred = y_pred_proba.astype(int)
     else:
-        if len(y_pred_proba.shape) == 1:
-            y_pred = (y_pred_proba >= threshold).astype(int)
-        else:
-            y_pred = np.argmax(y_pred_proba, axis=1)
+        y_pred = np.argmax(y_pred_proba, axis=1)
 
+    # Métricas básicas
     accuracy = accuracy_score(y_true, y_pred)
 
+    # AUC (macro average para 3 classes)
     try:
-        if is_binary:
-            if len(y_pred_proba.shape) == 1:
-                auc = roc_auc_score(y_true, y_pred_proba)
-            else:
-                auc = roc_auc_score(y_true, y_pred_proba[:, 1])
-        else:
-            auc = roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='macro')
+        auc = roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='macro')
     except Exception as e:
         log(WARNING, f"Erro ao calcular AUC: {e}")
         auc = 0.5
 
-    avg_type = 'binary' if is_binary else 'weighted'
-    precision = precision_score(y_true, y_pred, average=avg_type, zero_division=0)
-    recall = recall_score(y_true, y_pred, average=avg_type, zero_division=0)
-    f1 = f1_score(y_true, y_pred, average=avg_type, zero_division=0)
+    # Métricas weighted (ponderadas pelo suporte de cada classe)
+    # NOTA: recall_weighted = accuracy (matematicamente correto!)
+    precision_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
+    recall_weighted = recall_score(y_true, y_pred, average='weighted', zero_division=0)
+    f1_weighted = f1_score(y_true, y_pred, average='weighted', zero_division=0)
 
+    # Métricas macro (média simples entre classes, sem ponderação)
+    # ÚTIL: Detecta viés em classes minoritárias
+    precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
+
+    # Matriz de confusão
     cm = confusion_matrix(y_true, y_pred)
 
+    # Métricas adicionais para classes desbalanceadas
+    balanced_acc = balanced_accuracy_score(y_true, y_pred)
+    mcc = matthews_corrcoef(y_true, y_pred)
+
+    # Recall por classe individual (CRÍTICO para classes minoritárias!)
+    recall_per_class = recall_score(y_true, y_pred, average=None, zero_division=0)
+    precision_per_class = precision_score(y_true, y_pred, average=None, zero_division=0)
+    f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0)
+
+    # Dicionário de métricas
     metrics = {
         'accuracy': float(accuracy),
-        'precision': float(precision),
-        'recall': float(recall),
-        'f1_score': float(f1),
+        'balanced_accuracy': float(balanced_acc),  # NOVO: Melhor que accuracy para desbalanceamento
+        'mcc': float(mcc),  # NOVO: Matthews Correlation Coefficient
+        'precision_weighted': float(precision_weighted),
+        'recall_weighted': float(recall_weighted),
+        'f1_score_weighted': float(f1_weighted),
+        'precision_macro': float(precision_macro),
+        'recall_macro': float(recall_macro),  # PRIORIDADE!
+        'f1_score_macro': float(f1_macro),    # PRIORIDADE!
         'auc': float(auc),
-        'num_classes': int(num_classes),
-        'confusion_matrix': cm.tolist()
+        'num_classes': NUM_CLASSES,
+        'confusion_matrix': cm.tolist(),
+        # Métricas por classe (essencial para detectar problemas!)
+        'recall_class_0': float(recall_per_class[0]),
+        'recall_class_1': float(recall_per_class[1]),
+        'recall_class_2': float(recall_per_class[2]),
+        'precision_class_0': float(precision_per_class[0]),
+        'precision_class_1': float(precision_per_class[1]),
+        'precision_class_2': float(precision_per_class[2]),
+        'f1_class_0': float(f1_per_class[0]),
+        'f1_class_1': float(f1_per_class[1]),
+        'f1_class_2': float(f1_per_class[2]),
     }
-
-    if is_binary and cm.size == 4:
-        tn, fp, fn, tp = cm.ravel()
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-        metrics['specificity'] = float(specificity)
 
     return metrics
 
 
 def print_metrics_summary(metrics: Dict, client_id: int = None, round_num: int = None):
-    """Imprime um resumo organizado das métricas"""
+    """Imprime resumo organizado das métricas (3 classes)"""
     prefix = f"[Client {client_id}]" if client_id is not None else "[Server]"
     if round_num is not None:
         prefix += f" Round {round_num}"
 
-    num_classes = metrics.get('num_classes', 2)
-    is_binary = num_classes == 2
-
     print(f"\n{prefix} Métricas de Performance:")
-    print(f"  Acurácia:    {metrics['accuracy']:.4f}")
-    print(f"  Precisão:    {metrics['precision']:.4f} ({'binary' if is_binary else 'weighted avg'})")
-    print(f"  Revocação:   {metrics['recall']:.4f} ({'binary' if is_binary else 'weighted avg'})")
-    print(f"  F1-Score:    {metrics['f1_score']:.4f} ({'binary' if is_binary else 'weighted avg'})")
-    print(f"  AUC:         {metrics['auc']:.4f} ({'binary' if is_binary else 'macro avg'})")
+    print(f"  Acurácia:           {metrics['accuracy']:.4f}")
+    print(f"  Balanced Accuracy:  {metrics.get('balanced_accuracy', 0):.4f}  [PRIORIDADE]")
+    print(f"  MCC:                {metrics.get('mcc', 0):.4f}")
+    print(f"  AUC:                {metrics['auc']:.4f} (macro avg)")
 
-    if 'specificity' in metrics:
-        print(f"  Especific.:  {metrics['specificity']:.4f}")
+    print(f"\n  Métricas Macro (média não-ponderada - PRIORIZAR!):")
+    print(f"    Precisão:  {metrics['precision_macro']:.4f}")
+    print(f"    Revocação: {metrics['recall_macro']:.4f}  [MÉTRICA PRINCIPAL]")
+    print(f"    F1-Score:  {metrics['f1_score_macro']:.4f}  [MÉTRICA PRINCIPAL]")
+
+    print(f"\n  Recall por Classe (detectar problemas em classes minoritárias):")
+    print(f"    Classe 0 (minoritária): {metrics.get('recall_class_0', 0):.4f}")
+    print(f"    Classe 1 (majoritária): {metrics.get('recall_class_1', 0):.4f}")
+    print(f"    Classe 2 (minoritária): {metrics.get('recall_class_2', 0):.4f}")
 
     cm = metrics['confusion_matrix']
-    if isinstance(cm, dict):
-        print(f"  Matriz de Confusão:")
-        print(f"    TN: {cm['tn']:4d} | FP: {cm['fp']:4d}")
-        print(f"    FN: {cm['fn']:4d} | TP: {cm['tp']:4d}")
-    elif isinstance(cm, list):
+    if isinstance(cm, list):
         cm_array = np.array(cm)
-        print(f"  Matriz de Confusão ({num_classes} classes):")
+        print(f"\n  Matriz de Confusão (3 classes):")
         for i, row in enumerate(cm_array):
-            print(f"    Classe {i}: {row}")
+            print(f"    Classe {i}: {list(row)}")
 
 
 def evaluate_metrics_aggregation(eval_metrics):
-    """Agrega métricas de avaliação de forma robusta"""
+    """Agrega métricas de múltiplos clientes (3 classes)"""
     from flwr.common.logger import log
     from logging import INFO
 
@@ -112,9 +143,12 @@ def evaluate_metrics_aggregation(eval_metrics):
         return {
             "auc": 0.5,
             "accuracy": 0.5,
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1_score": 0.0
+            "precision_weighted": 0.0,
+            "recall_weighted": 0.0,
+            "f1_score_weighted": 0.0,
+            "precision_macro": 0.0,
+            "recall_macro": 0.0,
+            "f1_score_macro": 0.0
         }
 
     total_num = sum([num for num, _ in eval_metrics])
@@ -122,22 +156,36 @@ def evaluate_metrics_aggregation(eval_metrics):
         return {
             "auc": 0.5,
             "accuracy": 0.5,
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1_score": 0.0
+            "precision_weighted": 0.0,
+            "recall_weighted": 0.0,
+            "f1_score_weighted": 0.0,
+            "precision_macro": 0.0,
+            "recall_macro": 0.0,
+            "f1_score_macro": 0.0
         }
 
     metric_sums = {
         "auc": 0.0,
         "accuracy": 0.0,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1_score": 0.0,
+        "precision_weighted": 0.0,
+        "recall_weighted": 0.0,
+        "f1_score_weighted": 0.0,
+        "precision_macro": 0.0,
+        "recall_macro": 0.0,
+        "f1_score_macro": 0.0,
     }
 
     for num, metrics in eval_metrics:
         for metric_name in metric_sums.keys():
-            metric_val = metrics.get(metric_name, 0.5 if metric_name in ['auc', 'accuracy'] else 0.0)
+            # Compatibilidade: aceitar nomes antigos (precision, recall, f1_score)
+            if metric_name == "precision_weighted":
+                metric_val = metrics.get(metric_name, metrics.get("precision", 0.0))
+            elif metric_name == "recall_weighted":
+                metric_val = metrics.get(metric_name, metrics.get("recall", 0.0))
+            elif metric_name == "f1_score_weighted":
+                metric_val = metrics.get(metric_name, metrics.get("f1_score", 0.0))
+            else:
+                metric_val = metrics.get(metric_name, 0.5 if metric_name in ['auc', 'accuracy'] else 0.0)
             metric_sums[metric_name] += metric_val * num
 
     metrics_aggregated = {}

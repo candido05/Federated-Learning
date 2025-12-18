@@ -51,27 +51,29 @@ class ExperimentLogger:
         self._write_to_file(header)
 
     def log_round_metrics(self, round_num: int, metrics: Dict, source: str = "server"):
-        """Loga métricas de uma rodada"""
+        """Loga métricas de uma rodada (3 classes)"""
         self.metrics_history[round_num] = metrics
 
         log_text = f"\n[{source.upper()}] Round {round_num} Métricas de Performance:\n"
-        log_text += f"  Acurácia:    {metrics.get('accuracy', 0):.4f}\n"
-        log_text += f"  Precisão:    {metrics.get('precision', 0):.4f}\n"
-        log_text += f"  Revocação:   {metrics.get('recall', 0):.4f}\n"
-        log_text += f"  F1-Score:    {metrics.get('f1_score', 0):.4f}\n"
-        log_text += f"  AUC:         {metrics.get('auc', 0):.4f}\n"
+        log_text += f"  Acurácia:           {metrics.get('accuracy', 0):.4f}\n"
+        log_text += f"  Balanced Accuracy:  {metrics.get('balanced_accuracy', 0):.4f}  [PRIORIDADE]\n"
+        log_text += f"  MCC:                {metrics.get('mcc', 0):.4f}\n"
+        log_text += f"  AUC:                {metrics.get('auc', 0):.4f} (macro avg)\n"
 
-        if 'specificity' in metrics:
-            log_text += f"  Especific.:  {metrics['specificity']:.4f}\n"
+        log_text += f"\n  Métricas Macro (média não-ponderada - PRIORIZAR!):\n"
+        log_text += f"    Precisão:  {metrics.get('precision_macro', 0):.4f}\n"
+        log_text += f"    Revocação: {metrics.get('recall_macro', 0):.4f}  [METRICA PRINCIPAL]\n"
+        log_text += f"    F1-Score:  {metrics.get('f1_score_macro', 0):.4f}  [METRICA PRINCIPAL]\n"
+
+        log_text += f"\n  Recall por Classe (detectar problemas em classes minoritárias):\n"
+        log_text += f"    Classe 0 (minoritária): {metrics.get('recall_class_0', 0):.4f}\n"
+        log_text += f"    Classe 1 (majoritária): {metrics.get('recall_class_1', 0):.4f}\n"
+        log_text += f"    Classe 2 (minoritária): {metrics.get('recall_class_2', 0):.4f}\n"
 
         if 'confusion_matrix' in metrics:
             cm = metrics['confusion_matrix']
-            if isinstance(cm, dict):
-                log_text += f"  Matriz de Confusão:\n"
-                log_text += f"    TN: {cm['tn']:4d} | FP: {cm['fp']:4d}\n"
-                log_text += f"    FN: {cm['fn']:4d} | TP: {cm['tp']:4d}\n"
-            elif isinstance(cm, list):
-                log_text += f"  Matriz de Confusão:\n"
+            if isinstance(cm, list):
+                log_text += f"\n  Matriz de Confusão (3 classes):\n"
                 for i, row in enumerate(cm):
                     log_text += f"    Classe {i}: {row}\n"
 
@@ -105,14 +107,16 @@ class ExperimentLogger:
 
         for round_num in sorted(self.metrics_history.keys(), key=int):
             metrics = self.metrics_history[round_num]
+
             summary += f"Round {round_num}:\n"
             summary += f"  Acurácia:    {metrics.get('accuracy', 0):.4f}\n"
-            summary += f"  Precisão:    {metrics.get('precision', 0):.4f}\n"
-            summary += f"  Revocação:   {metrics.get('recall', 0):.4f}\n"
-            summary += f"  F1-Score:    {metrics.get('f1_score', 0):.4f}\n"
             summary += f"  AUC:         {metrics.get('auc', 0):.4f}\n"
-            if 'specificity' in metrics:
-                summary += f"  Especific.:  {metrics['specificity']:.4f}\n"
+            summary += f"  [Weighted] Precisão:  {metrics.get('precision_weighted', metrics.get('precision', 0)):.4f}\n"
+            summary += f"  [Weighted] Revocação: {metrics.get('recall_weighted', metrics.get('recall', 0)):.4f}\n"
+            summary += f"  [Weighted] F1-Score:  {metrics.get('f1_score_weighted', metrics.get('f1_score', 0)):.4f}\n"
+            summary += f"  [Macro] Precisão:  {metrics.get('precision_macro', 0):.4f}\n"
+            summary += f"  [Macro] Revocação: {metrics.get('recall_macro', 0):.4f}\n"
+            summary += f"  [Macro] F1-Score:  {metrics.get('f1_score_macro', 0):.4f}\n"
             summary += "\n"
 
         print(summary)
@@ -188,12 +192,21 @@ class ExperimentLogger:
         if self.metrics_history:
             last_round = max(self.metrics_history.keys(), key=int)
             last_metrics = self.metrics_history[last_round]
+
             readme_content += f"""
+### Métricas Gerais
 - **Acurácia Final**: {last_metrics.get('accuracy', 0):.4f}
 - **AUC Final**: {last_metrics.get('auc', 0):.4f}
-- **F1-Score Final**: {last_metrics.get('f1_score', 0):.4f}
-- **Precisão Final**: {last_metrics.get('precision', 0):.4f}
-- **Revocação Final**: {last_metrics.get('recall', 0):.4f}
+
+### Métricas Weighted (Ponderadas por Suporte)
+- **Precisão Weighted**: {last_metrics.get('precision_weighted', last_metrics.get('precision', 0)):.4f}
+- **Revocação Weighted**: {last_metrics.get('recall_weighted', last_metrics.get('recall', 0)):.4f}
+- **F1-Score Weighted**: {last_metrics.get('f1_score_weighted', last_metrics.get('f1_score', 0)):.4f}
+
+### Métricas Macro (Não-Ponderadas)
+- **Precisão Macro**: {last_metrics.get('precision_macro', 0):.4f}
+- **Revocação Macro**: {last_metrics.get('recall_macro', 0):.4f}
+- **F1-Score Macro**: {last_metrics.get('f1_score_macro', 0):.4f}
 """
 
         with open(f"{self.log_dir}/README.md", 'w', encoding='utf-8') as f:
