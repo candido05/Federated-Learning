@@ -14,12 +14,15 @@ from flwr.common.context import Context
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-from common import DataProcessor, replace_keys, ExperimentLogger
+from common import (
+    DataProcessor, replace_keys, ExperimentLogger,
+    get_stable_tree_params, ClientCyclingStrategy
+)
 from .client import XGBoostClient
 from .server import create_server_fn
 
 
-def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict):
+def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict, advanced_config: dict = None):
     """Factory function para criar função de cliente"""
 
     def client_fn(context: Context):
@@ -42,7 +45,8 @@ def create_client_fn(data_processor: DataProcessor, num_local_round: int, params
         return XGBoostClient(
             train_dmatrix, valid_dmatrix, num_train, num_val,
             num_local_round, params, cfg.get("train_method", "cyclic"),
-            partition_id, X_valid=valid_X, y_valid=valid_y
+            partition_id, X_valid=valid_X, y_valid=valid_y,
+            train_y=train_y, advanced_config=advanced_config
         ).to_client()
 
     return client_fn
@@ -86,8 +90,11 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 
 def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
                           num_server_rounds: int, num_local_boost_round: int,
-                          train_method: str = "cyclic", seed: int = 42):
+                          train_method: str = "cyclic", seed: int = 42,
+                          advanced_config: dict = None):
     """Executa experimento de Federated Learning com XGBoost"""
+    advanced_config = advanced_config or {}
+
     logger = ExperimentLogger(
         algorithm_name="xgboost",
         strategy_name=train_method,
@@ -123,20 +130,23 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
         "num_class": num_classes if num_classes > 2 else None,
     }
 
-    # Remover num_class se None
+    if advanced_config.get('use_stable_params'):
+        stable_params = get_stable_tree_params('xgboost')
+        params.update(stable_params)
+        log(INFO, f"[STABLE PARAMS] Aplicados: {stable_params}")
+
     if params["num_class"] is None:
         del params["num_class"]
 
-    # Criar aplicações cliente e servidor
-    client_fn = create_client_fn(data_processor, num_local_boost_round, params)
+    advanced_config['num_server_rounds'] = num_server_rounds
+
+    client_fn = create_client_fn(data_processor, num_local_boost_round, params, advanced_config)
     client_app = ClientApp(client_fn=client_fn)
 
-    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger)
+    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger, advanced_config)
     server_app = ServerApp(server_fn=server_fn)
 
-    # Configurar recursos - REDUZIDO para economizar memória
-    # Limitar clientes simultâneos para evitar OOM
-    max_concurrent_clients = min(num_clients, 3)  # Máximo 3 clientes por vez
+    max_concurrent_clients = min(num_clients, 3)
 
     backend_config = {
         "client_resources": {
@@ -144,20 +154,20 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
             "num_gpus": 1.0 / num_clients if USE_GPU else 0.0
         },
         "init_args": {
-            "num_cpus": max_concurrent_clients,  # Limitar workers Ray
+            "num_cpus": max_concurrent_clients,
         }
     }
 
     run_cfg = {
         "num-server-rounds": str(num_server_rounds),
-        "fraction-fit": str(1.0 / num_clients) if train_method == "cyclic" else "1.0",  # Cyclic: 1 cliente por vez
-        "fraction-evaluate": "0.0",  # DESABILITAR avaliação de clientes (usa apenas servidor)
+        "fraction-fit": str(1.0 / num_clients) if train_method == "cyclic" else "1.0",
+        "fraction-evaluate": "0.0",
         "local-epochs": str(num_local_boost_round),
         "train-method": train_method,
         "partitioner-type": "uniform",
         "seed": str(seed),
         "test-fraction": "0.2",
-        "centralised-eval": "False",  # DESABILITAR para evitar deserialização
+        "centralised-eval": "False",
         "centralised-eval-client": "False",
         "scaled-lr": "False",
         "params": params,
@@ -175,11 +185,8 @@ def run_xgboost_experiment(data_processor: DataProcessor, num_clients: int,
         run_cfg=run_cfg,
     )
 
-    # Finalizar logging
     metrics_history = logger.end_experiment(final_history=result)
 
-    # Retornar dict com informações de sucesso
-    # Se temos métricas, o experimento foi bem-sucedido
     success = len(metrics_history) > 0
 
     return {

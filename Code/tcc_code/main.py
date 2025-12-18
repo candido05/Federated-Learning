@@ -36,19 +36,26 @@ VALIDATION_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_va
 
 DEFAULT_CONFIG = {
     "num_clients": 3,
-    "num_server_rounds": 50,  # 50 rodadas globais
-    "num_local_boost_round": 50,  # 50 rodadas locais
+    "num_server_rounds": 50,
+    "num_local_boost_round": 50,
     "seed": 42,
-    "use_all_data": False,  # Usar apenas subset de veículos
-    "vehicles_per_client": 40,  # 40 veículos por cliente (120 total de 400)
-    "balance_strategy": "oversample",  # Opções: oversample, smote, undersample, combined
-    "stratified": True  # Stratified sampling ativo
+    "use_all_data": False,
+    "vehicles_per_client": 40,
+    "balance_strategy": "oversample",
+    "stratified": True,
+
+    "use_class_weights": True,
+    "max_class_weight": 10.0,
+    "use_sample_weights": False,
+    "use_stable_params": True,
+    "diversity_aggregation": True,
+    "diversity_alpha": 0.5,
+    "penalize_mono_class": True,
+    "use_curriculum": True,
+    "curriculum_warmup": 5,
+    "use_entropy_cycling": True,
 }
 
-
-# ============================================================================
-# FUNÇÕES PRINCIPAIS
-# ============================================================================
 
 def run_single_experiment(algorithm: str, strategy: str, config: dict):
     """
@@ -93,6 +100,19 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
         )
         data_processor.load_and_prepare_data()
 
+        advanced_config = {
+            'use_class_weights': config.get('use_class_weights', False),
+            'max_class_weight': config.get('max_class_weight', 10.0),
+            'use_sample_weights': config.get('use_sample_weights', False),
+            'use_stable_params': config.get('use_stable_params', False),
+            'diversity_aggregation': config.get('diversity_aggregation', False),
+            'diversity_alpha': config.get('diversity_alpha', 0.5),
+            'penalize_mono_class': config.get('penalize_mono_class', False),
+            'use_curriculum': config.get('use_curriculum', False),
+            'curriculum_warmup': config.get('curriculum_warmup', 5),
+            'use_entropy_cycling': config.get('use_entropy_cycling', False),
+        }
+
         if algorithm == "xgboost":
             result = run_xgboost_experiment(
                 data_processor=data_processor,
@@ -100,7 +120,8 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
                 num_server_rounds=config['num_server_rounds'],
                 num_local_boost_round=config['num_local_boost_round'],
                 train_method=strategy,
-                seed=config['seed']
+                seed=config['seed'],
+                advanced_config=advanced_config
             )
         elif algorithm == "lightgbm":
             result = run_lightgbm_experiment(
@@ -109,7 +130,8 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
                 num_server_rounds=config['num_server_rounds'],
                 num_local_boost_round=config['num_local_boost_round'],
                 train_method=strategy,
-                seed=config['seed']
+                seed=config['seed'],
+                advanced_config=advanced_config
             )
         elif algorithm == "catboost":
             result = run_catboost_experiment(
@@ -118,7 +140,8 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
                 num_server_rounds=config['num_server_rounds'],
                 num_local_boost_round=config['num_local_boost_round'],
                 train_method=strategy,
-                seed=config['seed']
+                seed=config['seed'],
+                advanced_config=advanced_config
             )
         else:
             print(f"[ERRO] Algoritmo desconhecido: {algorithm}")
@@ -177,10 +200,6 @@ def run_all_experiments(algorithms: list, strategies: list, config: dict):
 
     return all_results
 
-
-# ============================================================================
-# INTERFACE DE LINHA DE COMANDO
-# ============================================================================
 
 def main():
     """Função principal com interface CLI"""

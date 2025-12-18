@@ -14,12 +14,12 @@ from flwr.common.context import Context
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-from common import DataProcessor, replace_keys, ExperimentLogger
+from common import DataProcessor, replace_keys, ExperimentLogger, get_stable_tree_params, ClientCyclingStrategy
 from .client import CatBoostClient
 from .server import create_server_fn
 
 
-def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict):
+def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict, advanced_config: dict = None):
     """Factory function para criar função de cliente"""
 
     def client_fn(context: Context):
@@ -42,7 +42,8 @@ def create_client_fn(data_processor: DataProcessor, num_local_round: int, params
         return CatBoostClient(
             train_pool, valid_pool, num_train, num_val,
             num_local_round, params, cfg.get("train_method", "cyclic"),
-            partition_id, X_valid=valid_X, y_valid=valid_y
+            partition_id, X_valid=valid_X, y_valid=valid_y,
+            train_y=train_y, advanced_config=advanced_config
         ).to_client()
 
     return client_fn
@@ -77,7 +78,7 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 
 def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
                             num_server_rounds: int, num_local_boost_round: int,
-                            train_method: str = "cyclic", seed: int = 42):
+                            train_method: str = "cyclic", seed: int = 42, advanced_config: dict = None):
     """Executa experimento de Federated Learning com CatBoost"""
     logger = ExperimentLogger(
         algorithm_name="catboost",
@@ -94,7 +95,6 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
 
     log(INFO, f"GPU disponível: {USE_GPU} | task_type: {task_type}")
 
-    # Detectar número de classes
     num_classes = len(np.unique(data_processor.y_test_all))
     log(INFO, f"Número de classes detectadas: {num_classes}")
 
@@ -119,10 +119,19 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     if num_classes > 2:
         params["classes_count"] = num_classes
 
-    client_fn = create_client_fn(data_processor, num_local_boost_round, params)
+    advanced_config = advanced_config or {}
+
+    if advanced_config.get('use_stable_params'):
+        stable_params = get_stable_tree_params('catboost')
+        params.update(stable_params)
+        log(INFO, f"[STABLE PARAMS] Aplicados: {stable_params}")
+
+    advanced_config['num_server_rounds'] = num_server_rounds
+
+    client_fn = create_client_fn(data_processor, num_local_boost_round, params, advanced_config)
     client_app = ClientApp(client_fn=client_fn)
 
-    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger)
+    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger, advanced_config)
     server_app = ServerApp(server_fn=server_fn)
 
     backend_config = {

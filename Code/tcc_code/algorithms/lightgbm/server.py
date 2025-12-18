@@ -16,7 +16,8 @@ from logging import INFO, WARNING
 
 from common import (
     DataProcessor, replace_keys, calculate_comprehensive_metrics,
-    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger
+    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger,
+    FederatedAggregationWeights, DiversityMetrics, ClientCyclingStrategy
 )
 
 
@@ -69,7 +70,7 @@ class FedLightGBMBagging(Strategy):
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=1.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
-                 on_evaluate_config_fn=None, initial_parameters=None):
+                 on_evaluate_config_fn=None, initial_parameters=None, advanced_config=None):
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.evaluate_fn = evaluate_fn
@@ -77,6 +78,13 @@ class FedLightGBMBagging(Strategy):
         self.on_fit_config_fn = on_fit_config_fn
         self.on_evaluate_config_fn = on_evaluate_config_fn
         self.initial_parameters = initial_parameters or Parameters(tensor_type="", tensors=[])
+        self.advanced_config = advanced_config or {}
+
+        # Inicializar aggregation weights se configurado
+        self.aggregation_weights = None
+        if self.advanced_config.get('diversity_aggregation'):
+            alpha = self.advanced_config.get('diversity_alpha', 0.5)
+            self.aggregation_weights = FederatedAggregationWeights(alpha=alpha)
 
     def initialize_parameters(self, client_manager):
         return self.initial_parameters
@@ -141,7 +149,7 @@ class FedLightGBMCyclic(Strategy):
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=0.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
-                 on_evaluate_config_fn=None, initial_parameters=None):
+                 on_evaluate_config_fn=None, initial_parameters=None, advanced_config=None):
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.evaluate_fn = evaluate_fn
@@ -149,6 +157,7 @@ class FedLightGBMCyclic(Strategy):
         self.on_fit_config_fn = on_fit_config_fn
         self.on_evaluate_config_fn = on_evaluate_config_fn
         self.initial_parameters = initial_parameters or Parameters(tensor_type="", tensors=[])
+        self.advanced_config = advanced_config or {}
         self.current_client_idx = 0
 
     def initialize_parameters(self, client_manager):
@@ -213,7 +222,7 @@ class FedLightGBMCyclic(Strategy):
         return self.evaluate_fn(server_round, parameters, {})
 
 
-def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None):
+def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None, advanced_config: Dict = None):
     """Factory function para criar função do servidor"""
 
     def server_fn(context: Context):
@@ -239,6 +248,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 on_fit_config_fn=config_func,
                 on_evaluate_config_fn=config_func,
                 initial_parameters=parameters,
+                advanced_config=advanced_config,
             )
         else:  # cyclic
             strategy = FedLightGBMCyclic(
@@ -249,6 +259,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 on_fit_config_fn=config_func,
                 on_evaluate_config_fn=config_func,
                 initial_parameters=parameters,
+                advanced_config=advanced_config,
             )
 
         config = ServerConfig(num_rounds=num_rounds)

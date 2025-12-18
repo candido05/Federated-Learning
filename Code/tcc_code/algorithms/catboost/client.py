@@ -3,13 +3,14 @@ Cliente Federated Learning para CatBoost
 """
 
 import os
+import numpy as np
 from catboost import CatBoost
 from flwr.client import Client
 from flwr.common import Code, EvaluateIns, EvaluateRes, FitIns, FitRes, Parameters, Status
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-from common import calculate_comprehensive_metrics, print_metrics_summary
+from common import calculate_comprehensive_metrics, print_metrics_summary, ClassBalancingHelper, CurriculumLearning
 
 
 class CatBoostClient(Client):
@@ -17,7 +18,7 @@ class CatBoostClient(Client):
 
     def __init__(self, train_pool, valid_pool, num_train, num_val,
                  num_local_round, params, train_method, cid: int,
-                 X_valid=None, y_valid=None):
+                 X_valid=None, y_valid=None, train_y=None, advanced_config=None):
         self.train_pool = train_pool
         self.valid_pool = valid_pool
         self.num_train = num_train
@@ -28,6 +29,21 @@ class CatBoostClient(Client):
         self.cid = cid
         self.X_valid = X_valid
         self.y_valid = y_valid
+        self.train_y = train_y
+        self.advanced_config = advanced_config or {}
+
+        self.class_balancer = None
+        self.curriculum = None
+
+        if self.advanced_config.get('use_class_weights') and train_y is not None:
+            num_classes = len(np.unique(train_y))
+            max_weight = self.advanced_config.get('max_class_weight', 10.0)
+            self.class_balancer = ClassBalancingHelper(num_classes=num_classes, max_weight=max_weight)
+
+        if self.advanced_config.get('use_curriculum'):
+            num_rounds = self.advanced_config.get('num_server_rounds', 10)
+            warmup_rounds = self.advanced_config.get('curriculum_warmup', 5)
+            self.curriculum = CurriculumLearning(num_rounds=num_rounds, warmup_rounds=warmup_rounds)
 
     def fit(self, ins: FitIns) -> FitRes:
         log(INFO, f"[Client {self.cid}] fit, config: {ins.config}")
@@ -38,6 +54,24 @@ class CatBoostClient(Client):
         print(f"  Amostras treino: {self.num_train} | Amostras validação: {self.num_val}")
         print(f"  Épocas locais: {self.num_local_round}")
         print(f"{'─'*80}")
+
+        if self.class_balancer and self.train_y is not None:
+            use_sample_weights = self.advanced_config.get('use_sample_weights', False)
+            use_class_weights = self.advanced_config.get('use_class_weights', True)
+
+            if use_class_weights:
+                class_weights_dict = self.class_balancer.compute_class_weights(self.train_y)
+
+                if self.curriculum:
+                    class_weights_dict = self.curriculum.adjust_class_weights_by_round(
+                        class_weights_dict, global_round
+                    )
+                    multiplier = self.curriculum.get_round_weights_multiplier(global_round)
+                    log(INFO, f"[CURRICULUM] Round {global_round}: Multiplicador de pesos: {multiplier:.2f}x")
+
+                log(INFO, f"[CLASS WEIGHTS] Aplicados: {class_weights_dict}")
+                sample_weights = np.array([class_weights_dict.get(label, 1.0) for label in self.train_y])
+                self.train_pool.set_weight(sample_weights)
 
         if global_round <= 1 or not ins.parameters.tensors:
             model = CatBoost(self.params)

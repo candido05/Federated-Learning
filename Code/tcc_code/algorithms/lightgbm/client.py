@@ -3,13 +3,17 @@ Cliente Federated Learning para LightGBM
 """
 
 import os
+import numpy as np
 import lightgbm as lgb
 from flwr.client import Client
 from flwr.common import Code, EvaluateIns, EvaluateRes, FitIns, FitRes, Parameters, Status
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-from common import calculate_comprehensive_metrics, print_metrics_summary
+from common import (
+    calculate_comprehensive_metrics, print_metrics_summary,
+    ClassBalancingHelper, CurriculumLearning
+)
 
 
 class VerboseCallback:
@@ -37,7 +41,8 @@ class LightGBMClient(Client):
 
     def __init__(self, train_data, valid_data, num_train, num_val,
                  num_local_round, params, train_method, cid: int,
-                 X_valid=None, y_valid=None):
+                 X_valid=None, y_valid=None, train_y=None,
+                 advanced_config=None):
         self.train_data = train_data
         self.valid_data = valid_data
         self.num_train = num_train
@@ -48,6 +53,20 @@ class LightGBMClient(Client):
         self.cid = cid
         self.X_valid = X_valid
         self.y_valid = y_valid
+        self.train_y = train_y
+        self.advanced_config = advanced_config or {}
+
+        self.class_balancer = None
+        self.curriculum = None
+        if self.advanced_config.get('use_class_weights') or self.advanced_config.get('use_sample_weights'):
+            num_classes = len(np.unique(train_y)) if train_y is not None else 3
+            max_weight = self.advanced_config.get('max_class_weight', 10.0)
+            self.class_balancer = ClassBalancingHelper(num_classes=num_classes, max_weight=max_weight)
+
+        if self.advanced_config.get('use_curriculum'):
+            num_rounds = self.advanced_config.get('num_server_rounds', 50)
+            warmup = self.advanced_config.get('curriculum_warmup', 5)
+            self.curriculum = CurriculumLearning(num_rounds=num_rounds, warmup_rounds=warmup)
 
     def fit(self, ins: FitIns) -> FitRes:
         log(INFO, f"[Client {self.cid}] fit, config: {ins.config}")
@@ -57,6 +76,28 @@ class LightGBMClient(Client):
         print(f"[Cliente {self.cid}] INICIANDO TREINAMENTO - Round {global_round}")
         print(f"  Amostras treino: {self.num_train} | Amostras validação: {self.num_val}")
         print(f"  Épocas locais: {self.num_local_round}")
+
+        if self.class_balancer and self.train_y is not None:
+            if self.advanced_config.get('use_class_weights'):
+                class_weights = self.class_balancer.compute_class_weights(self.train_y)
+
+                if self.curriculum:
+                    class_weights = self.curriculum.adjust_class_weights_by_round(
+                        class_weights, global_round
+                    )
+                    multiplier = self.curriculum.get_round_weights_multiplier(global_round)
+                    print(f"  [CURRICULUM] Multiplicador de pesos: {multiplier:.2f}x")
+
+                sample_weights = np.array([class_weights.get(label, 1.0) for label in self.train_y])
+                self.train_data.set_weight(sample_weights)
+                print(f"  [CLASS WEIGHTS] Aplicados: {class_weights}")
+
+            elif self.advanced_config.get('use_sample_weights'):
+                sample_weights = self.class_balancer.compute_sample_weights(self.train_y)
+                self.train_data.set_weight(sample_weights)
+                print(f"  [SAMPLE WEIGHTS] Aplicados: min={sample_weights.min():.2f}, "
+                      f"max={sample_weights.max():.2f}, mean={sample_weights.mean():.2f}")
+
         print(f"{'─'*80}")
 
         verbose_callback = VerboseCallback(self.cid, global_round, self.num_local_round)

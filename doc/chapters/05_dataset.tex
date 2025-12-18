@@ -1,37 +1,288 @@
 \section{DATASET E PREPARAÇÃO DOS DADOS}
 
-\subsection{Seleção do Dataset}
+\subsection{Origem e Geração do Dataset}
+
+Para avaliar o desempenho dos algoritmos de Aprendizado Federado neste trabalho, foi utilizado um dataset de comportamento de veículos gerado através de simulação de tráfego veicular realista. O dataset original foi criado utilizando um simulador de tráfego especializado que implementa o modelo de mobilidade IDM (Intelligent Driver Model), um modelo amplamente reconhecido na literatura de simulação de tráfego que captura comportamentos realistas de condução, incluindo aceleração, desaceleração, mudanças de faixa e interações entre veículos. A escolha de dados sintéticos gerados por simulação, ao invés de dados reais de tráfego, permite controle preciso sobre parâmetros experimentais, reprodutibilidade dos experimentos através de seeds aleatórias fixas, e evita questões de privacidade e regulamentações associadas a dados reais de veículos. O dataset completo está armazenado em:
+
+\begin{verbatim}
+dataset_fl/dataset/dataset_K400_seed42/
+\end{verbatim}
+
+\subsubsection{Configuração da Simulação}
+
+A simulação que gerou o dataset foi configurada com um conjunto detalhado de parâmetros que definem o ambiente de tráfego, características dos veículos e duração da observação. Estes parâmetros foram armazenados em um arquivo de configuração \texttt{simulation\_config.json} para garantir reprodutibilidade e documentação completa dos experimentos. A configuração escolhida visa simular um cenário de rodovia realista com densidade moderada de tráfego e condições operacionais típicas:
+
+\begin{itemize}
+    \item \textbf{Número de veículos (K)}: 400 veículos simulados
+    \item \textbf{Rodovia}: 88 km de extensão com 3 faixas
+    \item \textbf{Tempo de simulação}: 3.600 segundos (1 hora)
+    \item \textbf{Intervalo de amostragem}: 1 segundo
+    \item \textbf{Seed aleatória}: 42 (para reprodutibilidade)
+    \item \textbf{Modelo de mobilidade}: IDM com parâmetros:
+    \begin{itemize}
+        \item Velocidade desejada: 25 m/s (90 km/h)
+        \item Distância de segurança: 2 m
+        \item Tempo de reação: 1,5 s
+        \item Aceleração máxima: 1,0 m/s²
+        \item Desaceleração confortável: 1,5 m/s²
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Estrutura Original dos Dados (JSON)}
+
+Os dados brutos da simulação foram salvos em formato JSON estruturado, com 1 arquivo independente por veículo. Esta organização facilita o particionamento natural dos dados por veículo no contexto do Aprendizado Federado, onde cada arquivo representa os dados coletados por um cliente individual (veículo). O formato JSON foi escolhido por sua legibilidade, facilidade de parsing e flexibilidade para armazenar estruturas de dados heterogêneas. A estrutura de diretórios é a seguinte:
+
+\begin{verbatim}
+private_datasets/
+├── veh_0.json
+├── veh_1.json
+├── veh_2.json
+...
+└── veh_399.json
+\end{verbatim}
+
+Cada arquivo JSON contém uma lista de observações temporais do veículo, onde cada observação possui:
+\begin{itemize}
+    \item \textbf{features}: Array com 22 valores numéricos (estado do veículo e vizinhança)
+    \item \textbf{label}: Classe de comportamento (0, 1 ou 2)
+\end{itemize}
+
+Exemplo de estrutura JSON:
+\begin{verbatim}
+[
+  {
+    "features": [21.18, 0, 21.23, 1, 385.34, 20.86, ...],
+    "label": 1
+  },
+  {
+    "features": [23.25, 0, 23.35, 1, 262.89, 25.26, ...],
+    "label": 2
+  },
+  ...
+]
+\end{verbatim}
+
+\subsection{Transformação para Formato Tabular}
+
+Os dados JSON foram transformados em formato CSV tabular para facilitar o treinamento dos modelos baseados em árvore de decisão (XGBoost, LightGBM e CatBoost), que operam de forma mais eficiente com estruturas tabulares do que com formatos hierárquicos como JSON. Este processo de transformação consolidou todos os 400 arquivos JSON individuais em 2 arquivos CSV estruturados (treino e validação), criando uma representação matricial dos dados onde cada linha corresponde a uma observação temporal de um veículo e cada coluna representa uma feature numérica. A transformação preserva todas as informações relevantes para o treinamento, incluindo metadados como identificadores de veículos necessários para o particionamento federado:
 
 \begin{table}[H]
 \centering
 \begin{tabularx}{\textwidth}{|l|X|}
 \hline
 \bf Característica & \bf Valor \\ \hline
-Nome & [Nome do dataset] \\ \hline
-Fonte & [URL/Repositório] \\ \hline
-Número de amostras & [N] \\ \hline
-Número de features & [M] \\ \hline
-Classes & [Lista de classes] \\ \hline
-Tipo de problema & Classificação binária/multiclasse \\ \hline
+Nome & Dataset de Comportamento de Veículos \\ \hline
+Formato original & 400 arquivos JSON (1 por veículo) \\ \hline
+Formato processado & 2 arquivos CSV tabulares \\ \hline
+Amostras de treino & 115.511 observações \\ \hline
+Amostras de validação & 28.878 observações \\ \hline
+Veículos & 400 veículos únicos \\ \hline
+Número de features & 22 features numéricas \\ \hline
+Classes & 3 classes de comportamento (0, 1, 2) \\ \hline
+Tipo de problema & Classificação multi-classe \\ \hline
+Simulador & IDM (Intelligent Driver Model) \\ \hline
+Seed & 42 (para reprodutibilidade) \\ \hline
 \end{tabularx}
-\caption{Metadados do dataset}
+\caption{Metadados do dataset de veículos utilizado nos experimentos}
 \label{tab:dataset_metadata}
 \end{table}
 
+O processo de transformação JSON → CSV consolidou os dados de múltiplos arquivos JSON em 2 arquivos CSV estruturados:
+
+\begin{itemize}
+    \item \textbf{Treino}: \texttt{dataset\_all\_vehicles.csv} (115.511 amostras de 400 veículos)
+    \item \textbf{Validação}: \texttt{dataset\_validation\_all\_vehicles.csv} (28.878 amostras)
+\end{itemize}
+
+\textbf{Processo de conversão}:
+\begin{enumerate}
+    \item Leitura de cada arquivo JSON (\texttt{veh\_*.json}) contendo observações temporais
+    \item Extração dos arrays \texttt{features} e valores \texttt{label} de cada observação
+    \item Adição de coluna \texttt{vehicle\_id} para identificar a origem dos dados
+    \item Concatenação de todas as observações em uma única estrutura tabular
+    \item Adição de cabeçalhos descritivos para cada feature
+    \item Divisão em conjuntos de treino e validação
+    \item Exportação para formato CSV com codificação UTF-8
+\end{enumerate}
+
 \subsection{Descrição das Features}
 
-\subsection{Análise Exploratória dos Dados}
+O dataset contém 22 features numéricas cuidadosamente selecionadas que descrevem de forma abrangente o estado de um veículo (ego-vehicle) e sua vizinhança imediata no ambiente de tráfego simulado. Estas features capturam informações espaciais (posições e distâncias relativas), cinemáticas (velocidades absolutas e relativas), e contextuais (presença de veículos vizinhos, faixa de rodagem) que são essenciais para caracterizar o comportamento do veículo e permitir classificação precisa. As features foram organizadas em categorias lógicas baseadas em sua natureza e na região espacial que descrevem em relação ao ego-vehicle, facilitando a interpretação e análise posterior:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|X|l|}
+\hline
+\bf Feature & \bf Descrição & \bf Tipo \\ \hline
+\multicolumn{3}{|c|}{\textbf{Estado do Ego-Vehicle}} \\ \hline
+ego\_speed & Velocidade do veículo principal & float32 \\ \hline
+ego\_lane & Faixa atual do veículo (0, 1, 2) & float32 \\ \hline
+ego\_desired\_speed & Velocidade desejada pelo veículo & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Veículo à Frente}} \\ \hline
+front\_exists & Indica se existe veículo à frente (0/1) & float32 \\ \hline
+front\_distance & Distância para o veículo à frente & float32 \\ \hline
+front\_speed & Velocidade do veículo à frente & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Veículo à Esquerda (Frente)}} \\ \hline
+left\_front\_exists & Indica se existe veículo na frente-esquerda & float32 \\ \hline
+left\_front\_distance & Distância para o veículo frente-esquerda & float32 \\ \hline
+left\_front\_speed & Velocidade do veículo frente-esquerda & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Veículo à Esquerda (Trás)}} \\ \hline
+left\_rear\_exists & Indica se existe veículo atrás-esquerda & float32 \\ \hline
+left\_rear\_distance & Distância para o veículo atrás-esquerda & float32 \\ \hline
+left\_rear\_speed & Velocidade do veículo atrás-esquerda & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Veículo à Direita (Frente)}} \\ \hline
+right\_front\_exists & Indica se existe veículo na frente-direita & float32 \\ \hline
+right\_front\_distance & Distância para o veículo frente-direita & float32 \\ \hline
+right\_front\_speed & Velocidade do veículo frente-direita & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Veículo à Direita (Trás)}} \\ \hline
+right\_rear\_exists & Indica se existe veículo atrás-direita & float32 \\ \hline
+right\_rear\_distance & Distância para o veículo atrás-direita & float32 \\ \hline
+right\_rear\_speed & Velocidade do veículo atrás-direita & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Features Derivadas}} \\ \hline
+speed\_diff\_front & Diferença de velocidade com veículo à frente & float32 \\ \hline
+speed\_diff\_left\_front & Diferença de velocidade com veículo frente-esquerda & float32 \\ \hline
+speed\_diff\_right\_front & Diferença de velocidade com veículo frente-direita & float32 \\ \hline
+speed\_diff\_left\_rear & Diferença de velocidade com veículo atrás-esquerda & float32 \\ \hline
+\multicolumn{3}{|c|}{\textbf{Metadados}} \\ \hline
+vehicle\_id & Identificador único do veículo & int \\ \hline
+label & Classe alvo (0, 1 ou 2) & int \\ \hline
+\end{tabularx}
+\caption{Features do dataset de comportamento de veículos}
+\label{tab:dataset_features}
+\end{table}
+
+As features capturam informações espaciais (distâncias), cinemáticas (velocidades) e relacionais (diferenças de velocidade) que são essenciais para a classificação do comportamento veicular.
 
 \subsection{Pré-processamento}
 
-\subsubsection{Tratamento de Valores Ausentes}
+O pré-processamento dos dados foi implementado de forma modular e reutilizável na classe \texttt{DataProcessor} do módulo \texttt{common/data\_processing.py}, seguindo um pipeline estruturado de transformações que prepara os dados brutos para o treinamento federado. Este pipeline inclui etapas de carregamento, limpeza, normalização, detecção de metadados e particionamento, todas executadas de forma automática e configurável. A implementação segue boas práticas de machine learning, como separação clara entre conjuntos de treino e validação, normalização consistente aplicada antes do particionamento, e preservação de informações necessárias para o contexto federado (como identificadores de veículos).
+
+\subsubsection{Carregamento e Leitura dos Dados}
+
+Os arquivos CSV são carregados utilizando \texttt{pandas.read\_csv()}, que realiza:
+\begin{itemize}
+    \item Leitura do arquivo CSV com cabeçalho
+    \item Parsing automático dos tipos de dados (float32 para features, int para labels)
+    \item Carregamento em memória como DataFrame do pandas
+\end{itemize}
+
+\subsubsection{Tratamento de Metadados}
+
+O dataset contém 2 colunas especiais que não são features preditivas, mas sim metadados essenciais para o Aprendizado Federado, e portanto recebem tratamento diferenciado durante o pré-processamento:
+\begin{itemize}
+    \item \textbf{vehicle\_id}: Extraída e armazenada separadamente para particionamento por veículo no Aprendizado Federado, removida da matriz de features antes do treinamento
+    \item \textbf{label}: Coluna alvo com as classes (0, 1, 2), separada das features e convertida para tipo \texttt{int}
+\end{itemize}
+
+Implementação (\texttt{common/data\_processing.py}, método \texttt{\_load\_csv}):
+\begin{verbatim}
+if "vehicle_id" in df.columns:
+    vehicle_ids = df["vehicle_id"].values
+    cols_to_drop.append("vehicle_id")
+
+if "label" in df.columns:
+    y = df["label"].values.astype(int)
+    cols_to_drop.append("label")
+
+X = df.drop(columns=cols_to_drop).values.astype(np.float32)
+\end{verbatim}
 
 \subsubsection{Normalização e Padronização}
 
-\subsubsection{Codificação de Variáveis Categóricas}
+Todos os dados numéricos foram normalizados utilizando \texttt{StandardScaler} do scikit-learn, um transformador que aplica padronização Z-score (também conhecida como standardization), convertendo cada feature para ter média zero e variância unitária. Esta normalização é crucial para modelos baseados em árvore quando as features possuem escalas muito diferentes, e garante que nenhuma feature domine a métrica de divisão apenas por ter valores absolutos maiores. A transformação Z-score é definida matematicamente como:
 
-\subsection{Particionamento dos Dados}
+\begin{equation}
+z = \frac{x - \mu}{\sigma}
+\end{equation}
 
-\subsubsection{Particionamento IID}
+onde $\mu$ é a média e $\sigma$ é o desvio padrão das features.
 
-\subsubsection{Particionamento non-IID}
+O procedimento de normalização seguiu rigorosamente 3 boas práticas fundamentais de machine learning para evitar data leakage e garantir avaliação justa do modelo:
+\begin{enumerate}
+    \item \textbf{Fit no treino}: O scaler foi ajustado (\texttt{fit}) apenas nos dados de treino
+    \item \textbf{Transform em ambos}: A transformação foi aplicada tanto no treino quanto na validação
+    \item \textbf{Antes do particionamento}: A normalização ocorreu antes da distribuição dos dados entre clientes
+\end{enumerate}
+
+Implementação no código (\texttt{common/data\_processing.py}, método \texttt{load\_and\_prepare\_data}):
+\begin{verbatim}
+# Inicializar scaler
+self.scaler = StandardScaler()
+
+# Fit apenas nos dados de treino
+self.scaler.fit(X_train_all)
+
+# Transform em treino e validação
+X_train_all = self.scaler.transform(X_train_all)
+X_test_all = self.scaler.transform(X_test_all)
+\end{verbatim}
+
+\subsubsection{Detecção de Número de Classes}
+
+O número de classes no problema de classificação é detectado automaticamente através da análise dos valores únicos presentes na coluna \texttt{label} do conjunto de treinamento, utilizando a função \texttt{np.unique()} do NumPy que retorna um array com todos os valores distintos encontrados:
+\begin{verbatim}
+num_classes = len(np.unique(y_train_all))
+\end{verbatim}
+
+Esta detecção automática permite que os algoritmos (XGBoost, LightGBM, CatBoost) configurem corretamente:
+\begin{itemize}
+    \item Função objetivo (binária vs. multi-classe)
+    \item Número de classes para softmax
+    \item Métricas de avaliação apropriadas
+\end{itemize}
+
+Para o dataset de veículos, o número detectado é 3 classes, configurando automaticamente os modelos para classificação multi-classe com função objetivo \texttt{multi:softprob} (XGBoost) ou equivalentes.
+
+\subsection{Particionamento dos Dados para Federated Learning}
+
+\subsubsection{Particionamento por Veículo}
+
+A estratégia principal de particionamento utilizada neste trabalho é o \textbf{particionamento por veículo} (vehicle-based partitioning), onde todos os dados coletados de um mesmo veículo durante a simulação são alocados exclusivamente a um único cliente, mantendo a integridade e localidade dos dados por dispositivo. Esta abordagem é significativamente mais realista e apropriada para cenários de Aprendizado Federado veicular do que particionamentos aleatórios (IID), pois melhor representa a natureza distribuída e descentralizada dos dados em aplicações reais, onde cada veículo (cliente) naturalmente coleta e mantém suas próprias observações localmente. As principais vantagens desta estratégia incluem:
+
+\begin{itemize}
+    \item Simula dados reais onde cada veículo (cliente) coleta suas próprias observações
+    \item Cria naturalmente partições non-IID, já que diferentes veículos podem ter comportamentos distintos
+    \item Preserva a correlação temporal entre observações do mesmo veículo
+\end{itemize}
+
+\textbf{Algoritmo de particionamento (5 etapas)}:
+\begin{enumerate}
+    \item Identificar todos os veículos únicos no dataset (coluna \texttt{vehicle\_id})
+    \item Embaralhar aleatoriamente os IDs dos veículos (seed=42)
+    \item Dividir os veículos em $N$ grupos de tamanho aproximadamente igual
+    \item Atribuir cada grupo de veículos a um cliente
+    \item Cada cliente recebe todas as amostras dos veículos do seu grupo
+\end{enumerate}
+
+Implementação (\texttt{common/data\_processing.py}):
+\begin{verbatim}
+unique_vehicles = np.unique(vehicle_ids_train)
+shuffled_vehicles = np.random.permutation(unique_vehicles)
+vehicles_per_client = num_vehicles // self.num_clients
+
+for client_id in range(self.num_clients):
+    client_vehicle_ids = shuffled_vehicles[start_idx:end_idx]
+    mask = np.isin(vehicle_ids_train, client_vehicle_ids)
+    client_X = X_train_all[mask]
+    client_y = y_train_all[mask]
+\end{verbatim}
+
+\textbf{Características da distribuição}:
+\begin{itemize}
+    \item \textbf{Total de dados}: 115.511 amostras distribuídas entre clientes
+    \item \textbf{Distribuição de amostras}: Variável por cliente (depende do número de observações por veículo)
+    \item \textbf{Distribuição de classes}: Naturalmente non-IID, refletindo comportamentos específicos de cada veículo
+    \item \textbf{Validação}: Conjunto centralizado de 28.878 amostras utilizado pelo servidor
+\end{itemize}
+
+\subsubsection{Particionamento IID (Fallback)}
+
+Como estratégia alternativa de fallback, o sistema também implementa particionamento IID (Independent and Identically Distributed) tradicional em 3 etapas sequenciais, utilizado automaticamente quando a coluna \texttt{vehicle\_id} não está disponível no dataset ou quando deseja-se avaliar o desempenho em cenários ideais com distribuição uniforme de dados:
+
+\begin{enumerate}
+    \item Embaralhar todas as amostras aleatoriamente
+    \item Dividir o dataset em $N$ partes iguais
+    \item Atribuir cada parte a um cliente
+\end{enumerate}
+
+Esta estratégia garante distribuição uniforme de classes entre clientes, mas não é utilizada nos experimentos principais deste trabalho, pois o dataset possui informação de \texttt{vehicle\_id}.

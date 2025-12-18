@@ -15,7 +15,8 @@ from logging import INFO, WARNING
 
 from common import (
     DataProcessor, replace_keys, calculate_comprehensive_metrics,
-    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger
+    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger,
+    FederatedAggregationWeights, DiversityMetrics, ClientCyclingStrategy
 )
 
 
@@ -60,11 +61,18 @@ def config_func(rnd: int) -> Dict[str, str]:
 class FedXgbBaggingCustom(FedAvg):
     """Estratégia Bagging customizada para XGBoost que não deserializa parâmetros"""
 
-    def __init__(self, data_processor=None, params=None, logger=None, *args, **kwargs):
+    def __init__(self, data_processor=None, params=None, logger=None, advanced_config=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_processor = data_processor
         self.params = params
         self.logger = logger
+        self.advanced_config = advanced_config or {}
+
+        # Inicializar aggregation weights se configurado
+        self.aggregation_weights = None
+        if self.advanced_config.get('diversity_aggregation'):
+            alpha = self.advanced_config.get('diversity_alpha', 0.5)
+            self.aggregation_weights = FederatedAggregationWeights(alpha=alpha)
 
     def aggregate_fit(
         self,
@@ -105,11 +113,15 @@ class FedXgbBaggingCustom(FedAvg):
 class FedXgbCyclicCustom(FedAvg):
     """Estratégia Cyclic customizada para XGBoost que passa modelo sequencialmente"""
 
-    def __init__(self, data_processor=None, params=None, logger=None, *args, **kwargs):
+    def __init__(self, data_processor=None, params=None, logger=None, advanced_config=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_processor = data_processor
         self.params = params
         self.logger = logger
+        self.advanced_config = advanced_config or {}
+
+        # Para cyclic, o cycling por entropia é implementado no nível de seleção de clientes
+        # (não na agregação, pois só temos 1 modelo por rodada)
 
     def aggregate_fit(
         self,
@@ -149,7 +161,7 @@ class FedXgbCyclicCustom(FedAvg):
             log(WARNING, f"Erro na avaliação manual do servidor: {e}")
 
 
-def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None):
+def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None, advanced_config: dict = None):
     """Factory function para criar função do servidor"""
 
     def server_fn(context: Context):
@@ -171,6 +183,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 data_processor=data_processor,
                 params=params,
                 logger=logger,
+                advanced_config=advanced_config,
                 fraction_fit=fraction_fit,
                 fraction_evaluate=fraction_eval,
                 evaluate_fn=None,  # Desabilitar para evitar deserialização
@@ -184,6 +197,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 data_processor=data_processor,
                 params=params,
                 logger=logger,
+                advanced_config=advanced_config,
                 fraction_fit=1.0,
                 fraction_evaluate=fraction_eval,
                 evaluate_fn=None,  # Desabilitar para evitar deserialização

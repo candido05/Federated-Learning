@@ -16,7 +16,8 @@ from logging import INFO, WARNING
 
 from common import (
     DataProcessor, replace_keys, calculate_comprehensive_metrics,
-    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger
+    print_metrics_summary, evaluate_metrics_aggregation, ExperimentLogger,
+    FederatedAggregationWeights, DiversityMetrics, ClientCyclingStrategy
 )
 
 
@@ -42,13 +43,10 @@ def get_evaluate_fn(data_processor: DataProcessor, params: Dict, logger: Experim
 
                 test_pool = Pool(data_processor.X_test_all, label=data_processor.y_test_all)
                 y_pred_proba = model.predict(test_pool, prediction_type='Probability')
-                # Se multi-classe, y_pred_proba já é 2D; se binário, pode ser 1D ou 2D
                 if len(y_pred_proba.shape) == 2 and y_pred_proba.shape[1] == 2:
-                    # Binário com 2 colunas: usar apenas probabilidade da classe positiva
                     y_pred_proba = y_pred_proba[:, 1]
                 comprehensive_metrics = calculate_comprehensive_metrics(data_processor.y_test_all, y_pred_proba)
 
-                # Log usando o logger se disponível
                 if logger:
                     logger.log_round_metrics(server_round, comprehensive_metrics, source="server")
                 else:
@@ -75,7 +73,7 @@ class FedCatBoostBagging(Strategy):
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=1.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
-                 on_evaluate_config_fn=None, initial_parameters=None):
+                 on_evaluate_config_fn=None, initial_parameters=None, advanced_config=None):
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.evaluate_fn = evaluate_fn
@@ -83,6 +81,12 @@ class FedCatBoostBagging(Strategy):
         self.on_fit_config_fn = on_fit_config_fn
         self.on_evaluate_config_fn = on_evaluate_config_fn
         self.initial_parameters = initial_parameters or Parameters(tensor_type="", tensors=[])
+        self.advanced_config = advanced_config or {}
+
+        self.aggregation_weights = None
+        if self.advanced_config.get('diversity_aggregation'):
+            alpha = self.advanced_config.get('diversity_alpha', 0.5)
+            self.aggregation_weights = FederatedAggregationWeights(alpha=alpha)
 
     def initialize_parameters(self, client_manager):
         return self.initial_parameters
@@ -147,7 +151,7 @@ class FedCatBoostCyclic(Strategy):
 
     def __init__(self, fraction_fit=1.0, fraction_evaluate=0.0, evaluate_fn=None,
                  evaluate_metrics_aggregation_fn=None, on_fit_config_fn=None,
-                 on_evaluate_config_fn=None, initial_parameters=None):
+                 on_evaluate_config_fn=None, initial_parameters=None, advanced_config=None):
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.evaluate_fn = evaluate_fn
@@ -155,6 +159,7 @@ class FedCatBoostCyclic(Strategy):
         self.on_fit_config_fn = on_fit_config_fn
         self.on_evaluate_config_fn = on_evaluate_config_fn
         self.initial_parameters = initial_parameters or Parameters(tensor_type="", tensors=[])
+        self.advanced_config = advanced_config or {}
         self.current_client_idx = 0
 
     def initialize_parameters(self, client_manager):
@@ -219,7 +224,7 @@ class FedCatBoostCyclic(Strategy):
         return self.evaluate_fn(server_round, parameters, {})
 
 
-def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None):
+def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, params: Dict, logger: ExperimentLogger = None, advanced_config: Dict = None):
     """Factory function para criar função do servidor"""
 
     def server_fn(context: Context):
@@ -245,6 +250,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 on_fit_config_fn=config_func,
                 on_evaluate_config_fn=config_func,
                 initial_parameters=parameters,
+                advanced_config=advanced_config,
             )
         else:  # cyclic
             strategy = FedCatBoostCyclic(
@@ -255,6 +261,7 @@ def create_server_fn(data_processor: DataProcessor, num_server_rounds: int, para
                 on_fit_config_fn=config_func,
                 on_evaluate_config_fn=config_func,
                 initial_parameters=parameters,
+                advanced_config=advanced_config,
             )
 
         config = ServerConfig(num_rounds=num_rounds)

@@ -19,6 +19,16 @@ from .logger import ExperimentLogger
 # Utilities
 from .utils import replace_keys
 
+# Advanced FL techniques
+from .fl_advanced import (
+    ClassBalancingHelper,
+    DiversityMetrics,
+    FederatedAggregationWeights,
+    CurriculumLearning,
+    ClientCyclingStrategy,
+    get_stable_tree_params
+)
+
 __all__ = [
     # Data
     'DataProcessor',
@@ -32,5 +42,13 @@ __all__ = [
     'ExperimentLogger',
 
     # Utils
-    'replace_keys'
+    'replace_keys',
+
+    # Advanced FL
+    'ClassBalancingHelper',
+    'DiversityMetrics',
+    'FederatedAggregationWeights',
+    'CurriculumLearning',
+    'ClientCyclingStrategy',
+    'get_stable_tree_params'
 ]

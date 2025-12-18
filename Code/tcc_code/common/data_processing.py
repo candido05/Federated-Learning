@@ -54,7 +54,6 @@ class DataProcessor:
         self.stratified = stratified
         self.scaler = StandardScaler()
 
-        # Caminhos dos CSVs
         self.train_csv_path = train_csv_path
         self.validation_csv_path = validation_csv_path
 
@@ -94,7 +93,6 @@ class DataProcessor:
 
         np.random.seed(self.seed)
 
-        # Determinar número de veículos por cliente
         if self.vehicles_per_client:
             vehicles_per_client = self.vehicles_per_client
             total_vehicles_needed = self.vehicles_per_client * self.num_clients
@@ -107,7 +105,6 @@ class DataProcessor:
 
         log(INFO, f"Particionando por veículo: {vehicles_per_client} veículos por cliente")
 
-        # Stratified sampling: garantir representação de classes em cada cliente
         if self.stratified and self.vehicles_per_client:
             selected_vehicles = self._stratified_vehicle_sampling(
                 X_train_all, y_train_all, vehicle_ids_train, unique_vehicles,
@@ -115,7 +112,6 @@ class DataProcessor:
             )
             np.random.shuffle(selected_vehicles)
         else:
-            # Usar todos ou subset aleatório
             if self.vehicles_per_client:
                 selected_vehicles = np.random.choice(
                     unique_vehicles,
@@ -139,19 +135,16 @@ class DataProcessor:
             client_vehicle_ids = selected_vehicles[start_idx:end_idx]
             client_vehicles.append(client_vehicle_ids)
 
-            # 1. Cliente recebe dados dos seus veículos
             mask = np.isin(vehicle_ids_train, client_vehicle_ids)
             client_X = X_train_all[mask]
             client_y = y_train_all[mask]
 
-            # Mostrar distribuição ANTES do balanceamento
             unique_before, counts_before = np.unique(client_y, return_counts=True)
             log(INFO, f"\n  Cliente {client_id} - ANTES do balanceamento:")
             log(INFO, f"    Veículos: {len(client_vehicle_ids)} | Amostras: {len(client_y)}")
             for cls, count in zip(unique_before, counts_before):
                 log(INFO, f"    Classe {cls}: {count} ({count/len(client_y)*100:.1f}%)")
 
-            # 2. Aplicar balanceamento de classes se configurado
             if self.balance_strategy:
                 client_X, client_y = self._balance_classes(client_X, client_y)
                 log(INFO, f"  Cliente {client_id} - APÓS balanceamento: {len(client_y)} amostras")
@@ -178,7 +171,6 @@ class DataProcessor:
             log(INFO, f"  Cliente {i}: {len(y_part)} amostras | {len(veh_ids)} veículos | Classes: {percentages}")
             log(INFO, f"    Veículos: {sorted(veh_ids.tolist())[:10]}{'...' if len(veh_ids) > 10 else ''}")
 
-            # Verificar se está balanceado
             if len(counts) == 3:
                 max_diff = (max(counts) - min(counts)) / len(y_part) * 100
                 if max_diff < 5:
@@ -224,17 +216,14 @@ class DataProcessor:
         Returns:
             Array com IDs dos veículos selecionados (stratified)
         """
-        # Calcular distribuição de classes por veículo
         vehicle_class_dist = {}
         for veh_id in unique_vehicles:
             mask = vehicle_ids == veh_id
             veh_classes = y[mask]
-            # Classe majoritária do veículo
             unique_cls, counts = np.unique(veh_classes, return_counts=True)
             majority_class = unique_cls[np.argmax(counts)]
             vehicle_class_dist[veh_id] = majority_class
 
-        # Agrupar veículos por classe majoritária
         vehicles_by_class = {0: [], 1: [], 2: []}
         for veh_id, cls in vehicle_class_dist.items():
             vehicles_by_class[cls].append(veh_id)
@@ -243,7 +232,6 @@ class DataProcessor:
         for cls in [0, 1, 2]:
             log(INFO, f"  Classe {cls}: {len(vehicles_by_class[cls])} veículos")
 
-        # Calcular quantos veículos selecionar de cada classe (proporcional)
         total_vehicles = len(unique_vehicles)
         vehicles_per_class = {}
         for cls in [0, 1, 2]:
@@ -251,10 +239,8 @@ class DataProcessor:
             n_select = int(n_vehicles_needed * proportion)
             vehicles_per_class[cls] = min(n_select, len(vehicles_by_class[cls]))
 
-        # Ajustar para somar exatamente n_vehicles_needed
         total_selected = sum(vehicles_per_class.values())
         if total_selected < n_vehicles_needed:
-            # Adicionar veículos restantes à classe com mais veículos
             cls_max = max(vehicles_by_class.keys(), key=lambda c: len(vehicles_by_class[c]))
             vehicles_per_class[cls_max] += (n_vehicles_needed - total_selected)
 
@@ -334,7 +320,6 @@ class DataProcessor:
                 log(INFO, f"\n[BALANCEAMENTO] Estratégia: Random Undersampling")
 
             elif self.balance_strategy == 'combined':
-                # SMOTE + Tomek Links: Oversampling seguido de limpeza de fronteira
                 min_samples = min(counts)
                 k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
                 sampler = SMOTETomek(
@@ -345,7 +330,6 @@ class DataProcessor:
                 log(INFO, f"  Combina oversampling com limpeza de fronteira de decisão")
 
             elif self.balance_strategy == 'smoteenn':
-                # SMOTE + ENN: Oversampling seguido de limpeza agressiva
                 min_samples = min(counts)
                 k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
                 sampler = SMOTEENN(

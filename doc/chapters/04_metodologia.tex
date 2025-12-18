@@ -10,17 +10,213 @@
 
 \subsection{Implementação dos Modelos Federados}
 
+A implementação dos modelos federados segue rigorosamente o padrão de cliente-servidor do framework Flower \cite{flower2020}, onde cada algoritmo (XGBoost \cite{chen2016xgboost}, LightGBM \cite{ke2017lightgbm} e CatBoost \cite{prokhorenkova2018catboost}) possui um cliente customizado que implementa a interface abstrata \texttt{Client} do Flower, definindo métodos específicos para treinamento e avaliação local. O fluxo de trabalho do Aprendizado Federado segue as 5 etapas sequenciais ilustradas nas Figuras \ref{fig:fl_initialize_fund} a \ref{fig:fl_aggregate_fund} (Seção 3.1), onde o servidor inicializa o modelo global com parâmetros apropriados, distribui o modelo serializado para os clientes selecionados através de gRPC, aguarda que cada cliente realize treinamento local em seus dados privados, coleta as atualizações de modelo (parâmetros ou árvores) de todos os clientes participantes, e finalmente agrega essas atualizações usando a estratégia de agregação escolhida (Bagging ou Cyclic) para produzir um novo modelo global melhorado. Este ciclo se repete por múltiplas rodadas até atingir convergência ou um número máximo de iterações pré-definido.
+
+Todos os algoritmos implementados neste trabalho compartilham uma estrutura comum de 2 métodos obrigatórios conforme especificado na Seção 3.4 sobre o framework Flower e ilustrado na arquitetura modular do Flower (Figura \ref{fig:flower_architecture_fund}). Esta uniformidade na interface facilita a comparação direta entre algoritmos e garante compatibilidade com o ecossistema do Flower:
+
+\begin{itemize}
+    \item \texttt{fit(ins: FitIns) -> FitRes}: Realiza treinamento local e retorna modelo atualizado
+    \item \texttt{evaluate(ins: EvaluateIns) -> EvaluateRes}: Avalia modelo global com dados locais
+\end{itemize}
+
 \subsubsection{Adaptação de XGBoost para FL}
+
+A implementação do cliente XGBoost para Aprendizado Federado está localizada no arquivo \texttt{algorithms/xgboost/client.py}, contendo a classe \texttt{XGBoostClient} que herda de \texttt{flwr.client.Client}. O cliente utiliza a estrutura de dados \texttt{DMatrix} nativa do XGBoost \cite{chen2016xgboost} para otimizar o desempenho do treinamento, aproveitando o armazenamento otimizado em formato column-oriented e cache-aware access que reduz significativamente o uso de memória e acelera operações de divisão de nós durante a construção das árvores. Esta implementação foi especialmente adaptada para funcionar eficientemente em ambientes federados, lidando com serialização de modelos, treinamento incremental e comunicação através do protocolo Flower.
+
+\textbf{Serialização do Modelo}
+
+O XGBoost permite serialização direta e eficiente em formato JSON utilizando o método \texttt{save\_raw()}, que converte a estrutura completa do modelo (árvores, parâmetros, features e metadados) em uma representação textual JSON compacta que pode ser facilmente transmitida através da rede. Esta abordagem é superior a métodos baseados em pickle, pois produz representações independentes de versão da biblioteca e compatíveis entre diferentes plataformas e linguagens de programação:
+
+\begin{verbatim}
+# Serialização (cliente -> servidor)
+local_model = bst.save_raw("json")
+local_model_bytes = bytes(local_model)
+
+# Deserialização (servidor -> cliente)
+global_model = bytearray(parameters.tensors[0])
+global_bst = xgb.Booster(params=params)
+global_bst.load_model(global_model)
+\end{verbatim}
+
+Esta abordagem permite transferência eficiente de modelos através da rede sem necessidade de arquivos intermediários temporários no sistema de arquivos, reduzindo overhead de I/O e eliminando potenciais problemas de concorrência ou vazamento de arquivos temporários. O formato JSON também facilita debugging e inspeção manual do modelo quando necessário durante o desenvolvimento.
+
+\textbf{Treinamento Incremental}
+
+O treinamento federado no XGBoost suporta 2 modos distintos de operação, dependendo da rodada de comunicação atual, permitindo inicialização limpa na primeira rodada e refinamento incremental nas rodadas subsequentes:
+
+\textit{Modo Inicial (Rodada 1):} Treina modelo do zero usando parâmetros inicializados aleatoriamente:
+\begin{verbatim}
+bst = xgb.train(
+    params,
+    train_dmatrix,
+    num_boost_round=num_local_round,
+    evals=[(valid_dmatrix, "validate"), (train_dmatrix, "train")]
+)
+\end{verbatim}
+
+\textit{Modo Incremental (Rodadas 2+):} Continua treinamento a partir do modelo global recebido:
+\begin{verbatim}
+bst = xgb.train(
+    params,
+    train_dmatrix,
+    num_boost_round=num_local_round,
+    xgb_model=global_bst,  # Modelo global como ponto inicial
+    evals=[(valid_dmatrix, "validate"), (train_dmatrix, "train")]
+)
+\end{verbatim}
+
+O parâmetro \texttt{xgb\_model} permite que o treinamento local adicione novas árvores ao modelo global existente, implementando efetivamente a estratégia de boosting distribuído.
+
+\textbf{Estratégias de Agregação}
+
+Para XGBoost, foram utilizadas as estratégias nativas do Flower implementadas em \texttt{flwr.server.strategy}:
+
+\begin{itemize}
+    \item \texttt{FedXgbBagging}: Implementa agregação por Bagging, onde árvores de múltiplos clientes são combinadas em um único ensemble
+    \item \texttt{FedXgbCyclic}: Implementa agregação Cíclica, onde clientes treinam sequencialmente adicionando árvores ao modelo
+\end{itemize}
+
+\textbf{Avaliação de Métricas}
+
+O cliente calcula métricas abrangentes após cada rodada de treinamento utilizando o módulo \texttt{common/metrics.py}:
+
+\begin{verbatim}
+y_pred_proba = bst.predict(valid_dmatrix)
+metrics = calculate_comprehensive_metrics(y_valid, y_pred_proba)
+\end{verbatim}
+
+As métricas calculadas incluem: acurácia, precisão, recall, F1-score, AUC e matriz de confusão, com detecção automática para classificação binária ou multi-classe (conforme descrito na Seção 5.3.4).
 
 \subsubsection{Adaptação de LightGBM para FL}
 
+A implementação do cliente LightGBM está em \texttt{algorithms/lightgbm/client.py}. Diferentemente do XGBoost, o LightGBM \cite{ke2017lightgbm} requer serialização baseada em arquivos temporários devido às limitações da API.
+
+\textbf{Serialização Baseada em Arquivos}
+
+O LightGBM não suporta serialização direta em memória, necessitando arquivos intermediários:
+
+\begin{verbatim}
+# Serialização (cliente -> servidor)
+temp_save_path = f"/tmp/lgb_local_model_{client_id}_{round}.txt"
+bst.save_model(temp_save_path)
+with open(temp_save_path, 'rb') as f:
+    local_model_bytes = f.read()
+os.remove(temp_save_path)
+
+# Deserialização (servidor -> cliente)
+temp_model_path = f"/tmp/lgb_global_model_{client_id}_{round}.txt"
+with open(temp_model_path, 'wb') as f:
+    f.write(global_model_bytes)
+bst = lgb.train(params, train_data, init_model=temp_model_path)
+os.remove(temp_model_path)
+\end{verbatim}
+
+Os arquivos temporários são imediatamente removidos após leitura/escrita para evitar acúmulo de dados no sistema.
+
+\textbf{Treinamento Incremental}
+
+Similar ao XGBoost, o LightGBM suporta treinamento incremental através do parâmetro \texttt{init\_model}:
+
+\begin{verbatim}
+bst = lgb.train(
+    params,
+    train_data,
+    num_boost_round=num_local_round,
+    init_model=temp_model_path,  # Modelo global como base
+    valid_sets=[valid_data],
+    valid_names=['valid']
+)
+\end{verbatim}
+
+\textbf{Estratégias Customizadas}
+
+Devido à falta de estratégias nativas no Flower para LightGBM, foram implementadas estratégias customizadas em \texttt{algorithms/lightgbm/server.py}:
+
+\begin{itemize}
+    \item \texttt{LightGBMBaggingStrategy}: Herda de \texttt{FedAvg} e implementa agregação por Bagging
+    \item \texttt{LightGBMCyclicStrategy}: Implementa seleção cíclica de clientes (1 cliente por rodada)
+\end{itemize}
+
+Ambas estratégias implementam os métodos \texttt{configure\_fit()}, \texttt{aggregate\_fit()} e \texttt{configure\_evaluate()} para gerenciar o ciclo de treinamento federado.
+
+\textbf{Callback de Progresso}
+
+Foi implementado um callback customizado para visualização do progresso:
+
+\begin{verbatim}
+class VerboseCallback:
+    def __call__(self, env):
+        iteration = env.iteration
+        metric_value = env.evaluation_result_list[0][2]
+        print(f"[Cliente {client_id}] Round {round} | "
+              f"Época {iteration+1}/{num_rounds} | Valid: {metric_value:.4f}")
+\end{verbatim}
+
 \subsubsection{Adaptação de CatBoost para FL}
+
+A implementação do cliente CatBoost está em \texttt{algorithms/catboost/client.py}. O CatBoost \cite{prokhorenkova2018catboost} utiliza a estrutura \texttt{Pool} para armazenamento eficiente de dados e também requer serialização baseada em arquivos.
+
+\textbf{Serialização em Formato CBM}
+
+O CatBoost utiliza formato binário proprietário CBM (CatBoost Model):
+
+\begin{verbatim}
+# Serialização (cliente -> servidor)
+temp_save_path = f"/tmp/catboost_local_model_{client_id}_{round}.cbm"
+model.save_model(temp_save_path, format='cbm')
+with open(temp_save_path, 'rb') as f:
+    local_model_bytes = f.read()
+os.remove(temp_save_path)
+
+# Deserialização (servidor -> cliente)
+temp_model_path = f"/tmp/catboost_global_model_{client_id}_{round}.cbm"
+with open(temp_model_path, 'wb') as f:
+    f.write(global_model_bytes)
+model = CatBoost(params)
+model.load_model(temp_model_path)
+os.remove(temp_model_path)
+\end{verbatim}
+
+\textbf{Treinamento Incremental}
+
+O CatBoost implementa treinamento incremental através do parâmetro \texttt{init\_model}:
+
+\begin{verbatim}
+model = CatBoost(params)
+model.load_model(temp_model_path)  # Carregar modelo global
+model.fit(
+    train_pool,
+    eval_set=valid_pool,
+    init_model=model,  # Continuar do modelo global
+    verbose=10
+)
+\end{verbatim}
+
+\textbf{Estratégias Customizadas}
+
+Similar ao LightGBM, foram implementadas estratégias customizadas em \texttt{algorithms/catboost/server.py}:
+
+\begin{itemize}
+    \item \texttt{CatBoostBaggingStrategy}: Implementa agregação por Bagging
+    \item \texttt{CatBoostCyclicStrategy}: Implementa agregação Cíclica sequencial
+\end{itemize}
+
+\textbf{Tratamento de Probabilidades}
+
+O CatBoost requer tratamento especial para predições de probabilidade em classificação binária:
+
+\begin{verbatim}
+y_pred_proba = model.predict(valid_pool, prediction_type='Probability')
+# Para classificação binária, extrair probabilidade da classe positiva
+if len(y_pred_proba.shape) == 2 and y_pred_proba.shape[1] == 2:
+    y_pred_proba = y_pred_proba[:, 1]
+\end{verbatim}
+
+Este tratamento garante compatibilidade com as funções de cálculo de métricas que esperam probabilidades unidimensionais para problemas binários.
 
 \subsection{Integração com SDN}
 
 \subsubsection{Configuração da Rede SDN}
-
-\subsubsection{Políticas de QoS}
 
 \subsubsection{Monitoramento de Tráfego}
 

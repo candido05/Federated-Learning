@@ -1,18 +1,401 @@
 \section{FUNDAMENTOS TEÓRICOS}
 
+Este capítulo apresenta os conceitos fundamentais que sustentam o desenvolvimento deste trabalho. Inicialmente, são discutidos os princípios do Aprendizado Federado, incluindo suas características essenciais, arquitetura cliente-servidor, formalização matemática do processo de otimização distribuída e as diferentes estratégias de agregação que determinam como os modelos locais são combinados para formar o modelo global. Em seguida, são detalhados os modelos baseados em árvore de decisão utilizados neste estudo: XGBoost, LightGBM e CatBoost, explorando suas formulações matemáticas, algoritmos de otimização, estratégias de regularização e características que os tornam adequados para ambientes de Aprendizado Federado. Por fim, é apresentado o framework Flower, ferramenta central para a implementação de sistemas de Aprendizado Federado, descrevendo sua arquitetura modular, protocolo de comunicação baseado em gRPC, interfaces de programação para clientes e servidores, e os modos de simulação e deployment que facilitam tanto a pesquisa acadêmica quanto aplicações em produção.
+
 \subsection{Aprendizado Federado}
 
 \subsubsection{Definição e Características}
 
+O Aprendizado Federado (Federated Learning - FL) é um paradigma de aprendizado de máquina distribuído que permite o treinamento de modelos em dados descentralizados, sem a necessidade de centralizar ou compartilhar os dados brutos. Neste modelo, múltiplos dispositivos ou servidores (denominados clientes) colaboram para treinar um modelo global, mantendo seus dados localmente armazenados e privados. Esta abordagem representa uma mudança fundamental em relação ao paradigma tradicional de aprendizado centralizado, onde todos os dados são coletados e armazenados em um único servidor para treinamento. O Aprendizado Federado surgiu como resposta crescente a preocupações com privacidade de dados, regulamentações como GDPR (General Data Protection Regulation) e LGPD (Lei Geral de Proteção de Dados), e limitações práticas de transferência de grandes volumes de dados através da rede. Além de preservar a privacidade, o FL permite o aproveitamento de dados distribuídos em dispositivos edge, como smartphones, veículos autônomos, dispositivos IoT e sistemas médicos, sem violar restrições de privacidade ou incorrer em custos proibitivos de comunicação.
+
+O fluxo de trabalho do Aprendizado Federado segue 5 etapas ilustradas nas Figuras \ref{fig:fl_initialize_fund} a \ref{fig:fl_aggregate_fund}:
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.70\textwidth]{figures/fl-initialize-global-model.png}
+\caption{Inicialização do modelo global no servidor central}
+\label{fig:fl_initialize_fund}
+\end{figure}
+
+Na Figura \ref{fig:fl_initialize_fund}, o servidor central inicializa um modelo global que serve como ponto de partida para o treinamento federado. Esta inicialização pode ser feita com parâmetros aleatórios, seguindo distribuições estatísticas apropriadas (como Xavier ou He initialization para redes neurais), ou pode utilizar modelos pré-treinados (transfer learning) quando disponíveis. A qualidade da inicialização pode impactar significativamente a velocidade de convergência e o desempenho final do modelo federado.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{figures/fl-send-global-model.png}
+\caption{Distribuição do modelo global para os clientes}
+\label{fig:fl_send_model_fund}
+\end{figure}
+
+Na Figura \ref{fig:fl_send_model_fund}, o modelo global é transmitido do servidor para os clientes selecionados através da serialização dos parâmetros do modelo. Este processo de broadcast envolve a conversão dos parâmetros do modelo em um formato adequado para transmissão pela rede (como arrays de bytes ou Protocol Buffers), seguido pela distribuição através de protocolos de comunicação eficientes como gRPC. A serialização deve ser eficiente para minimizar o overhead de comunicação, especialmente em cenários com largura de banda limitada ou grande número de clientes participantes.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{figures/fl-local-training.png}
+\caption{Treinamento local nos clientes com dados privados}
+\label{fig:fl_local_training_fund}
+\end{figure}
+
+Na Figura \ref{fig:fl_local_training_fund}, cada cliente treina o modelo utilizando seus dados locais privados, sem que os dados saiam do dispositivo cliente. Durante esta fase, cada cliente executa múltiplas épocas de treinamento local usando algoritmos de otimização como SGD (Stochastic Gradient Descent), Adam ou outros otimizadores apropriados para o tipo de modelo. O número de épocas locais e o tamanho do batch são hiperparâmetros importantes que afetam tanto a qualidade do modelo atualizado quanto o custo computacional no cliente. Esta etapa é crucial para preservar a privacidade dos dados, pois nenhuma informação bruta é compartilhada com o servidor ou outros clientes.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{figures/fl-send-model-updates.png}
+\caption{Envio das atualizações locais para o servidor}
+\label{fig:fl_send_updates_fund}
+\end{figure}
+
+Na Figura \ref{fig:fl_send_updates_fund}, após o treinamento local, cada cliente envia suas atualizações de modelo (parâmetros treinados) de volta ao servidor central. As atualizações podem ser enviadas como parâmetros completos do modelo ou, em algumas implementações, como gradientes ou deltas em relação ao modelo inicial. Esta fase de upload representa um dos principais gargalos de comunicação em sistemas FL, especialmente para modelos grandes ou em ambientes com conectividade limitada. Técnicas de compressão, quantização e agregação parcial podem ser empregadas para reduzir o volume de dados transmitidos durante esta etapa.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.70\textwidth]{figures/fl-aggregate-model-updates.png}
+\caption{Agregação das atualizações no servidor}
+\label{fig:fl_aggregate_fund}
+\end{figure}
+
+Na Figura \ref{fig:fl_aggregate_fund}, o servidor agrega as atualizações recebidas de todos os clientes para criar um novo modelo global melhorado. O ciclo se repete por múltiplas rodadas até a convergência. O processo de agregação é determinado pela estratégia escolhida (como FedAvg, FedProx, ou estratégias específicas para modelos baseados em árvore como Bagging e Cyclic), e pode envolver ponderação das atualizações baseada no número de amostras de cada cliente, qualidade dos dados, ou outros critérios. A convergência é tipicamente avaliada através de métricas como acurácia em um conjunto de validação centralizado, estabilização da função de perda, ou após um número pré-determinado de rodadas de comunicação. Este processo iterativo continua até que um critério de parada seja satisfeito, resultando no modelo global final que incorpora conhecimento de todos os clientes participantes sem ter acesso direto aos seus dados privados.
+
+O processo básico do Aprendizado Federado pode ser descrito formalmente da seguinte forma. Considere $N$ clientes, cada um com seu próprio conjunto de dados local $\mathcal{D}_i$, onde $i = 1, 2, \ldots, N$. O objetivo é aprender um modelo global $w$ que minimize a função de perda agregada:
+
+\begin{equation}
+\min_{w} F(w) = \sum_{i=1}^{N} \frac{n_i}{n} F_i(w)
+\end{equation}
+
+\noindent onde $F_i(w)$ é a função de perda local do cliente $i$, $n_i = |\mathcal{D}_i|$ é o número de amostras do cliente $i$, e $n = \sum_{i=1}^{N} n_i$ é o total de amostras em todos os clientes. A função de perda local é definida como:
+
+\begin{equation}
+F_i(w) = \frac{1}{n_i} \sum_{(x,y) \in \mathcal{D}_i} \ell(w; x, y)
+\end{equation}
+
+\noindent onde $\ell(w; x, y)$ é a função de perda para uma amostra individual $(x, y)$ com parâmetros do modelo $w$.
+
+As 5 principais características do Aprendizado Federado que o diferenciam do aprendizado de máquina tradicional centralizado são:
+
+\textbf{Privacidade e Segurança:} Os dados nunca saem dos dispositivos locais dos clientes. Apenas atualizações de modelo (gradientes ou parâmetros) são compartilhadas com o servidor central, preservando a privacidade dos dados sensíveis. Esta característica é especialmente importante em domínios como saúde, finanças e dispositivos móveis.
+
+\textbf{Comunicação Limitada:} A troca de dados entre clientes e servidor é reduzida ao compartilhamento de parâmetros do modelo, ao invés de conjuntos de dados completos. Isso minimiza o overhead de comunicação, crucial em ambientes com largura de banda limitada.
+
+\textbf{Dados Não-IID:} Os dados distribuídos entre os clientes frequentemente não são independentes e identicamente distribuídos (non-IID). Cada cliente pode ter uma distribuição de dados significativamente diferente dos demais, refletindo características locais específicas.
+
+\textbf{Desbalanceamento de Dados:} O número de amostras pode variar drasticamente entre clientes. Alguns clientes podem ter milhares de amostras enquanto outros possuem apenas algumas dezenas.
+
+\textbf{Heterogeneidade de Dispositivos:} Os clientes podem ter capacidades computacionais, de armazenamento e de rede muito diferentes. Esta heterogeneidade exige estratégias adaptativas para garantir a convergência do modelo.
+
+O ciclo de treinamento federado típico segue 6 etapas:
+
+\begin{enumerate}
+\item \textbf{Inicialização:} O servidor central inicializa o modelo global $w^{(0)}$ com parâmetros aleatórios ou pré-treinados.
+
+\item \textbf{Seleção de Clientes:} Em cada rodada $t$, o servidor seleciona um subconjunto $\mathcal{S}_t$ de clientes disponíveis para participar do treinamento.
+
+\item \textbf{Broadcast:} O servidor envia os parâmetros atuais do modelo global $w^{(t)}$ para os clientes selecionados.
+
+\item \textbf{Treinamento Local:} Cada cliente $i \in \mathcal{S}_t$ realiza treinamento local usando seus dados $\mathcal{D}_i$, produzindo parâmetros atualizados $w_i^{(t+1)}$.
+
+\item \textbf{Agregação:} O servidor coleta os modelos locais dos clientes e os agrega para produzir o novo modelo global $w^{(t+1)}$.
+
+\item \textbf{Convergência:} O processo se repete até que um critério de convergência seja atingido (número de rodadas, precisão mínima, etc.).
+\end{enumerate}
+
+
 \subsubsection{Estratégias de Agregação}
 
-\subsection{Modelos Baseados em Árvores de Decisão}
+As estratégias de agregação são fundamentais no Aprendizado Federado, pois determinam como os modelos locais treinados pelos clientes são combinados para formar o modelo global. A escolha da estratégia de agregação impacta diretamente na convergência, precisão e robustez do sistema federado, influenciando aspectos como velocidade de convergência, qualidade do modelo final, tolerância a dados non-IID, consumo de recursos de comunicação e capacidade de lidar com clientes heterogêneos ou falhas de comunicação. Diferentes estratégias são mais adequadas para diferentes cenários de aplicação, tipos de modelos e características dos dados distribuídos. Neste trabalho, são exploradas 2 estratégias principais de agregação especialmente relevantes para modelos baseados em árvore: Bagging e Cíclica (Cyclic).
+
+\textbf{Estratégia Bagging}
+
+Na estratégia de Bagging, múltiplos clientes treinam modelos independentes em paralelo usando seus dados locais. Após o treinamento, os modelos são agregados no servidor central. Para modelos baseados em árvore de decisão, a agregação por Bagging é particularmente eficaz, pois permite combinar ensembles de árvores de diferentes clientes, explorando a diversidade dos dados locais para criar um modelo global mais robusto e generalizável. Esta estratégia é análoga ao tradicional Bootstrap Aggregating (Bagging) proposto por Breiman, mas adaptado para o contexto federado onde os dados já estão naturalmente particionados entre clientes. Considere que cada cliente $i$ treina um modelo $M_i$ com $K$ árvores. A agregação pode ser realizada de 2 formas distintas, cada uma com suas vantagens e características:
+
+\textit{Agregação de Árvores:} As árvores individuais de todos os modelos locais são combinadas em um único ensemble:
+
+\begin{equation}
+M_{global} = \bigcup_{i \in \mathcal{S}} \text{Árvores}(M_i)
+\end{equation}
+
+\textit{Agregação de Predições:} Cada modelo local realiza predições independentes, e a predição final é obtida pela média (regressão) ou votação (classificação):
+
+\begin{equation}
+\hat{y}_{ensemble}(x) = \frac{1}{|\mathcal{S}|} \sum_{i \in \mathcal{S}} M_i(x)
+\end{equation}
+
+\textbf{Estratégia Cíclica (Cyclic)}
+
+Na estratégia Cíclica, diferentemente do treinamento paralelo do Bagging, os clientes treinam sequencialmente. Em cada rodada $t$, apenas um cliente $i_t$ é selecionado para treinar, e o modelo é passado de um cliente para o próximo em uma ordem determinada:
+
+\begin{equation}
+w^{(t+1)} = w_i^{(t+1)}, \quad \text{onde } i = t \mod N
+\end{equation}
+
+O processo pode ser descrito em 4 etapas:
+
+\begin{enumerate}
+\item Cliente $i_1$ recebe o modelo inicial $w^{(0)}$ e treina localmente, produzindo $w_1^{(1)}$
+\item Cliente $i_2$ recebe $w_1^{(1)}$, treina e produz $w_2^{(2)}$
+\item O processo continua até todos os clientes participarem
+\item O ciclo pode se repetir por múltiplas rodadas
+\end{enumerate}
+
+Esta estratégia é vantajosa quando há limitações de recursos (memória, largura de banda) ou quando se deseja um processo de convergência mais gradual e controlado. Para modelos baseados em árvore, a estratégia cíclica permite que cada cliente adicione árvores incrementalmente ao modelo existente.
+
+\subsection{Modelos Baseados em Árvore de Decisão}
+
+Os modelos baseados em árvore de decisão são algoritmos de aprendizado de máquina que utilizam estruturas em forma de árvore para realizar predições. Estes modelos são particularmente eficazes para dados tabulares e têm sido amplamente utilizados em competições de ciência de dados devido à sua precisão, interpretabilidade e eficiência computacional.
+
+Um modelo baseado em árvore de decisão faz predições dividindo recursivamente o espaço de características em regiões. Cada divisão é determinada por uma condição sobre uma característica específica. Para uma tarefa de regressão, a predição final para uma amostra $x$ é dada por:
+
+\begin{equation}
+\hat{y}(x) = \sum_{j=1}^{J} w_j \mathbb{1}(x \in R_j)
+\end{equation}
+
+\noindent onde $J$ é o número de folhas na árvore, $w_j$ é o valor de predição associado à folha $j$, $R_j$ é a região definida pela folha $j$, e $\mathbb{1}(\cdot)$ é a função indicadora.
+
+Os métodos de ensemble combinam múltiplas árvores de decisão para melhorar a precisão e generalização. Os 3 algoritmos de gradient boosting considerados neste trabalho (XGBoost, LightGBM e CatBoost) são baseados no princípio de boosting, onde árvores são adicionadas sequencialmente para corrigir os erros das árvores anteriores.
+
 
 \subsubsection{XGBoost}
 
+XGBoost (eXtreme Gradient Boosting) é um algoritmo de gradient boosting otimizado que se tornou uma das técnicas mais populares em aprendizado de máquina para dados tabulares. O algoritmo constrói um ensemble de árvores de decisão de forma aditiva, onde cada nova árvore é treinada para corrigir os erros residuais das árvores anteriores.
+
+O modelo XGBoost para uma amostra $x_i$ após $K$ iterações é dado por:
+
+\begin{equation}
+\hat{y}_i = \sum_{k=1}^{K} f_k(x_i)
+\end{equation}
+
+\noindent onde $f_k$ representa a $k$-ésima árvore de decisão. O objetivo do treinamento é minimizar a seguinte função de perda regularizada:
+
+\begin{equation}
+\mathcal{L}(\phi) = \sum_{i=1}^{n} \ell(\hat{y}_i, y_i) + \sum_{k=1}^{K} \Omega(f_k)
+\end{equation}
+
+\noindent onde $\ell$ é uma função de perda diferenciável (ex: erro quadrático médio, log-loss), e $\Omega(f_k)$ é um termo de regularização definido por:
+
+\begin{equation}
+\Omega(f) = \gamma T + \frac{1}{2}\lambda \sum_{j=1}^{T} w_j^2
+\end{equation}
+
+\noindent onde $T$ é o número de folhas, $w_j$ é o peso da folha $j$, $\gamma$ penaliza a complexidade do modelo (número de folhas), e $\lambda$ controla a regularização L2 nos pesos das folhas.
+
+O algoritmo XGBoost utiliza uma abordagem de otimização aditiva. Na iteração $t$, uma nova árvore $f_t$ é adicionada para minimizar:
+
+\begin{equation}
+\mathcal{L}^{(t)} = \sum_{i=1}^{n} \ell(y_i, \hat{y}_i^{(t-1)} + f_t(x_i)) + \Omega(f_t)
+\end{equation}
+
+Aplicando a expansão de Taylor de segunda ordem à função de perda:
+
+\begin{equation}
+\mathcal{L}^{(t)} \approx \sum_{i=1}^{n} [\ell(y_i, \hat{y}_i^{(t-1)}) + g_i f_t(x_i) + \frac{1}{2} h_i f_t^2(x_i)] + \Omega(f_t)
+\end{equation}
+
+\noindent onde $g_i = \partial_{\hat{y}_i^{(t-1)}} \ell(y_i, \hat{y}_i^{(t-1)})$ é o gradiente de primeira ordem e $h_i = \partial^2_{\hat{y}_i^{(t-1)}} \ell(y_i, \hat{y}_i^{(t-1)})$ é a Hessiana.
+
+Removendo termos constantes e reorganizando:
+
+\begin{equation}
+\tilde{\mathcal{L}}^{(t)} = \sum_{i=1}^{n} [g_i f_t(x_i) + \frac{1}{2} h_i f_t^2(x_i)] + \gamma T + \frac{1}{2}\lambda \sum_{j=1}^{T} w_j^2
+\end{equation}
+
+Definindo $I_j = \{i | q(x_i) = j\}$ como o conjunto de amostras atribuídas à folha $j$, podemos reescrever a função objetivo como:
+
+\begin{equation}
+\tilde{\mathcal{L}}^{(t)} = \sum_{j=1}^{T} [(\sum_{i \in I_j} g_i) w_j + \frac{1}{2}(\sum_{i \in I_j} h_i + \lambda) w_j^2] + \gamma T
+\end{equation}
+
+O peso ótimo para a folha $j$ é obtido derivando em relação a $w_j$ e igualando a zero:
+
+\begin{equation}
+w_j^* = -\frac{\sum_{i \in I_j} g_i}{\sum_{i \in I_j} h_i + \lambda}
+\end{equation}
+
+E a pontuação de qualidade correspondente para a estrutura da árvore é:
+
+\begin{equation}
+\tilde{\mathcal{L}}^{(t)} = -\frac{1}{2} \sum_{j=1}^{T} \frac{(\sum_{i \in I_j} g_i)^2}{\sum_{i \in I_j} h_i + \lambda} + \gamma T
+\end{equation}
+
+Esta pontuação é usada para avaliar candidatas a divisão durante a construção da árvore. O ganho de uma divisão que separa o conjunto $I$ em $I_L$ (esquerda) e $I_R$ (direita) é:
+
+\begin{equation}
+\text{Ganho} = \frac{1}{2} \left[ \frac{(\sum_{i \in I_L} g_i)^2}{\sum_{i \in I_L} h_i + \lambda} + \frac{(\sum_{i \in I_R} g_i)^2}{\sum_{i \in I_R} h_i + \lambda} - \frac{(\sum_{i \in I} g_i)^2}{\sum_{i \in I} h_i + \lambda} \right] - \gamma
+\end{equation}
+
+As principais características e inovações do XGBoost incluem:
+
+\textbf{Otimizações de Eficiência:} XGBoost implementa diversas otimizações como column block para armazenamento paralelo e cache-aware access para melhorar a performance em hardware moderno.
+
+\textbf{Regularização:} Tanto regularização L1 ($\alpha$) quanto L2 ($\lambda$) podem ser aplicadas aos pesos das folhas para prevenir overfitting.
+
+\textbf{Suporte a GPU:} Implementação nativa de algoritmos para treinamento em GPU, acelerando significativamente o processo.
+
+\textbf{Tratamento de Valores Ausentes:} Árvores aprendem automaticamente a melhor direção para valores ausentes durante o treinamento.
+
+
 \subsubsection{LightGBM}
 
+LightGBM (Light Gradient Boosting Machine) é um framework de gradient boosting desenvolvido pela Microsoft que utiliza algoritmos baseados em árvores de decisão. A principal inovação do LightGBM é o uso de estratégias de crescimento de árvore mais eficientes, resultando em treinamento mais rápido e menor uso de memória.
+
+Enquanto a maioria dos algoritmos de gradient boosting cresce árvores level-wise (nível por nível), o LightGBM utiliza uma estratégia leaf-wise (folha por folha):
+
+\textbf{Crescimento Level-wise:} Divide todos os nós no mesmo nível, resultando em árvores balanceadas mas potencialmente ineficientes.
+
+\textbf{Crescimento Leaf-wise:} Divide a folha que maximiza a redução de perda, mesmo que isso resulte em árvores desbalanceadas. Esta abordagem geralmente converge mais rapidamente:
+
+\begin{equation}
+\text{folha\_dividir} = \arg\max_{\text{folha}} \text{Ganho}(\text{folha})
+\end{equation}
+
+O LightGBM introduz 2 técnicas principais para melhorar a eficiência:
+
+\textbf{Gradient-based One-Side Sampling (GOSS)}
+
+GOSS reduz o número de amostras usadas para estimar o ganho de informação, mantendo aquelas com gradientes grandes (erros grandes) e amostrando aleatoriamente aquelas com gradientes pequenos. Para um conjunto de amostras com gradientes ordenados, GOSS:
+
+\begin{enumerate}
+\item Mantém as top-$a \times 100\%$ amostras com maiores gradientes (conjunto $A$)
+\item Amostra aleatoriamente $b \times 100\%$ das amostras restantes (conjunto $B$)
+\item Calcula o ganho de informação usando:
+\end{enumerate}
+
+\begin{equation}
+{\text{Ganho}} = \frac{1}{n}\left(\frac{(\sum_{x_i \in A} g_i + \frac{1-a}{b}\sum_{x_i \in B} g_i)^2}{n_l} + \frac{(\sum_{x_i \in A} g_i + \frac{1-a}{b}\sum_{x_i \in B} g_i)^2}{n_r}\right)
+\end{equation}
+
+\noindent onde $\frac{1-a}{b}$ é um fator de correção para compensar a subamostragem.
+
+\textbf{Exclusive Feature Bundling (EFB)}
+
+EFB reduz a dimensionalidade agrupando características mutuamente exclusivas (features que raramente assumem valores não-zero simultaneamente). O problema de encontrar o agrupamento ótimo é NP-difícil, mas pode ser aproximado como um problema de coloração de grafos:
+
+\begin{enumerate}
+\item Construir um grafo onde cada característica é um vértice
+\item Arestas conectam características com conflitos significativos
+\item Aplicar algoritmo de coloração de grafos (greedy) para agrupar características
+\end{enumerate}
+
+O número efetivo de características após EFB é:
+
+\begin{equation}
+d_{efetivo} = d_{original} - \sum_{i=1}^{k} (|B_i| - 1)
+\end{equation}
+
+\noindent onde $k$ é o número de bundles e $|B_i|$ é o tamanho do bundle $i$.
+
+\textbf{Discretização de Características}
+
+LightGBM utiliza histogramas para discretizar características contínuas em bins discretos. Para uma característica $x^{(j)}$, os valores são mapeados para $b$ bins:
+
+\begin{equation}
+\text{bin}(x_i^{(j)}) = \min\{k : x_i^{(j)} \leq \text{threshold}_k\}, \quad k = 1, \ldots, b
+\end{equation}
+
+Os gradientes são então acumulados por bin:
+
+\begin{align}
+G_k &= \sum_{i: \text{bin}(x_i^{(j)}) = k} g_i \\
+H_k &= \sum_{i: \text{bin}(x_i^{(j)}) = k} h_i
+\end{align}
+
+O ganho para uma divisão no threshold entre bins $k$ e $k+1$ é calculado eficientemente como:
+
+\begin{equation}
+\text{Ganho}_k = \frac{(\sum_{i=1}^{k} G_i)^2}{\sum_{i=1}^{k} H_i} + \frac{(\sum_{i=k+1}^{b} G_i)^2}{\sum_{i=k+1}^{b} H_i} - \frac{(\sum_{i=1}^{b} G_i)^2}{\sum_{i=1}^{b} H_i}
+\end{equation}
+
+Esta abordagem reduz a complexidade de encontrar a melhor divisão de $O(n \times d)$ para $O(b \times d)$, onde $b \ll n$.
+
+As vantagens do LightGBM incluem velocidade de treinamento superior (especialmente em datasets grandes), menor uso de memória através de histogramas, e suporte nativo a características categóricas sem necessidade de one-hot encoding.
+
+
 \subsubsection{CatBoost}
+
+CatBoost (Categorical Boosting) é um algoritmo de gradient boosting desenvolvido pela Yandex que se diferencia por seu tratamento superior de características categóricas e por mecanismos que reduzem overfitting. O nome reflete sua principal inovação: o tratamento eficiente de variáveis categóricas sem a necessidade de pré-processamento extensivo.
+
+\textbf{Ordered Boosting}
+
+Uma limitação dos algoritmos tradicionais de gradient boosting é o chamado "prediction shift": o modelo usado para calcular gradientes é treinado nos mesmos dados, levando a um viés. CatBoost resolve isso com Ordered Boosting, que utiliza diferentes modelos para diferentes amostras.
+
+Para cada amostra $x_i$, o CatBoost mantém um modelo $M_i$ treinado apenas nas amostras que precedem $x_i$ em uma permutação aleatória. O gradiente para $x_i$ é calculado usando $M_i$:
+
+\begin{equation}
+g_i = \nabla_{\hat{y}} \ell(y_i, M_i(x_i))
+\end{equation}
+
+Na prática, manter $n$ modelos separados é computacionalmente proibitivo. CatBoost utiliza uma aproximação onde múltiplas amostras compartilham o mesmo modelo, mas os modelos são atualizados sequencialmente seguindo a permutação:
+
+\begin{equation}
+M_i = M_{i-1} + \alpha \cdot \text{TreeUpdate}(x_{\sigma(i-1)}, g_{\sigma(i-1)})
+\end{equation}
+
+\noindent onde $\sigma$ é uma permutação aleatória dos índices das amostras.
+
+\textbf{Target Statistics para Características Categóricas}
+
+CatBoost codifica características categóricas usando target statistics, calculando estatísticas do target baseadas em valores categóricos. Para uma característica categórica $c$ com valor $v$, a codificação é:
+
+\begin{equation}
+\text{TS}(c=v) = \frac{\sum_{i: c_i=v, i<j} y_i + a \cdot P}{\sum_{i: c_i=v, i<j} 1 + a}
+\end{equation}
+
+\noindent onde:
+\begin{itemize}
+\item A soma considera apenas amostras que precedem a amostra atual $j$ na permutação (evitando data leakage)
+\item $P$ é uma estimativa prior do target (geralmente a média global)
+\item $a > 0$ é um parâmetro de suavização que controla o peso do prior
+\end{itemize}
+
+Para múltiplas permutações, CatBoost calcula a média das target statistics:
+
+\begin{equation}
+\text{TS}_{final}(c=v) = \frac{1}{p} \sum_{k=1}^{p} \text{TS}_k(c=v)
+\end{equation}
+
+\noindent onde $p$ é o número de permutações.
+
+\textbf{Oblivious Trees}
+
+CatBoost utiliza árvores simétricas (oblivious trees) como modelos base. Nesta estrutura, a mesma condição de divisão é aplicada em todos os nós do mesmo nível. Uma árvore oblivious de profundidade $d$ pode ser representada como um vetor de $d$ divisões:
+
+\begin{equation}
+T = (s_1, s_2, \ldots, s_d)
+\end{equation}
+
+\noindent onde cada $s_i$ é uma divisão binária. O número de folhas é $2^d$, e cada caminho da raiz até uma folha é determinado unicamente por um vetor binário de decisões.
+
+As vantagens das árvores oblivious incluem:
+
+\begin{itemize}
+\item \textbf{Redução de Overfitting:} A estrutura simétrica age como uma forma de regularização
+\item \textbf{Eficiência Computacional:} Predições podem ser calculadas muito rapidamente usando operações binárias
+\item \textbf{Facilidade de Interpretação:} A estrutura balanceada facilita a compreensão do modelo
+\end{itemize}
+
+\textbf{Regularização e Penalidades}
+
+CatBoost implementa múltiplas formas de regularização:
+
+\textit{Penalidade de Complexidade:} Controla o tamanho das árvores:
+
+\begin{equation}
+\mathcal{L}_{reg} = \mathcal{L}_{loss} + \lambda \sum_{t=1}^{T} \Omega(f_t)
+\end{equation}
+
+\textit{Bagging:} Subamostragem de dados com reposição (Bayesian bootstrap):
+
+\begin{equation}
+P(x_i \text{ selecionado}) = 1 - (1 - p)^{s}
+\end{equation}
+
+\noindent onde $p$ é a probabilidade de subsample e $s$ é o tamanho da amostra.
+
+\textit{Random Strength:} Adiciona ruído aleatório às pontuações de divisão para reduzir overfitting:
+
+\begin{equation}
+\text{score}_{modificado} = \text{score}_{original} - \text{random\_strength} \cdot \mathcal{N}(0,1)
+\end{equation}
+
+O CatBoost também suporta diferentes modos de crescimento de árvore (Ordered, Plain) e oferece predições robustas através do uso de múltiplas permutações durante o treinamento.
+
 
 \subsection{Redes Definidas por Software (SDN)}
 
@@ -22,8 +405,120 @@
 
 \subsubsection{Aplicações em Aprendizado de Máquina}
 
+
 \subsection{Framework Flower}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/flower-any.jpeg}
+\caption{Arquitetura do Flower: framework agnóstico que suporta diversos tipos de clientes e algoritmos de ML}
+\label{fig:flower_architecture_fund}
+\end{figure}
+
+Flower (Federated Learning over the Wire) é um framework open-source para Aprendizado Federado que facilita a implementação e experimentação de sistemas FL. Desenvolvido para ser agnóstico em relação ao framework de machine learning subjacente (PyTorch, TensorFlow, scikit-learn, XGBoost, etc.), Flower oferece uma arquitetura flexível e escalável para pesquisa e aplicações em produção, conforme ilustrado na Figura \ref{fig:flower_architecture_fund}.
+
+O design do Flower é fundamentado em 3 princípios principais:
+
+\textbf{Flexibilidade:} Suporte a diferentes frameworks de ML, estratégias de agregação e topologias de rede, permitindo experimentação com diversos algoritmos e configurações.
+
+\textbf{Extensibilidade:} Arquitetura modular que permite fácil customização de componentes individuais (clientes, servidor, estratégias) sem modificar o núcleo do framework.
+
+\textbf{Simplicidade:} API minimalista e intuitiva que reduz a complexidade de implementação de sistemas FL, tornando-os acessíveis a pesquisadores e desenvolvedores.
+
 
 \subsubsection{Arquitetura do Flower}
 
-\subsubsection{Implementação de Clientes e Servidores}
+A arquitetura do Flower segue um modelo cliente-servidor com comunicação baseada em gRPC (Google Remote Procedure Call), permitindo comunicação eficiente entre clientes e servidor através de diferentes redes e plataformas.
+
+\textbf{Componentes Principais}
+
+A arquitetura do Flower consiste em 3 componentes fundamentais:
+
+\textit{Client (Cliente):} Representa um participante do treinamento federado que possui dados locais. Cada cliente implementa a interface \texttt{Client} que define 2 métodos principais:
+
+\begin{itemize}
+\item \texttt{fit(parameters, config)}: Recebe parâmetros do modelo global, realiza treinamento local, e retorna parâmetros atualizados junto com métricas
+\item \texttt{evaluate(parameters, config)}: Avalia o modelo global usando dados locais e retorna métricas de desempenho
+\end{itemize}
+
+Formalmente, um cliente $i$ executa a seguinte computação durante o treinamento:
+
+\begin{align}
+w_i^{(t+1)} &= \texttt{fit}(w^{(t)}, \mathcal{D}_i, \text{config}) \\
+\text{métricas}_i &= \texttt{evaluate}(w^{(t+1)}, \mathcal{D}_i^{val})
+\end{align}
+
+\textit{Server (Servidor):} Coordena o processo de treinamento federado, gerenciando clientes, distribuindo parâmetros e agregando atualizações. O servidor mantém o modelo global $w^{(t)}$ e orquestra as rodadas de treinamento:
+
+\begin{algorithm}[H]
+\caption{Servidor Flower}
+\begin{algorithmic}[1]
+\STATE Inicializar modelo global $w^{(0)}$
+\FOR{rodada $t = 1$ até $T$}
+    \STATE Selecionar clientes $\mathcal{S}_t \subseteq \mathcal{C}$ usando \texttt{configure\_fit()}
+    \STATE Enviar $w^{(t)}$ e configuração para clientes em $\mathcal{S}_t$
+    \STATE Receber atualizações $\{w_i^{(t+1)}\}_{i \in \mathcal{S}_t}$ dos clientes
+    \STATE $w^{(t+1)} \leftarrow$ \texttt{aggregate\_fit()}$(\{w_i^{(t+1)}\}_{i \in \mathcal{S}_t})$
+    \STATE (Opcional) Avaliar $w^{(t+1)}$ usando \texttt{evaluate()}
+\ENDFOR
+\STATE \textbf{Retornar} $w^{(T)}$
+\end{algorithmic}
+\end{algorithm}
+
+\textit{Strategy (Estratégia):} Define como os modelos locais são agregados no servidor e como os clientes são selecionados. As principais funções de uma estratégia são:
+
+\begin{itemize}
+\item \texttt{configure\_fit(server\_round, parameters, client\_manager)}: Seleciona clientes para participar da rodada de treinamento e prepara configurações
+\item \texttt{aggregate\_fit(server\_round, results, failures)}: Agrega os resultados de treinamento dos clientes para produzir o modelo global
+\item \texttt{configure\_evaluate(server\_round, parameters, client\_manager)}: Configura a avaliação distribuída
+\item \texttt{aggregate\_evaluate(server\_round, results, failures)}: Agrega métricas de avaliação dos clientes
+\end{itemize}
+
+\textbf{Protocolo de Comunicação}
+
+Flower utiliza Protocol Buffers e gRPC para comunicação eficiente entre clientes e servidor. O protocolo define mensagens estruturadas para troca de parâmetros e metadados:
+
+\begin{itemize}
+\item \texttt{Parameters}: Encapsula os parâmetros do modelo como arrays de bytes
+\item \texttt{FitIns}: Instrução de treinamento enviada do servidor para o cliente
+\item \texttt{FitRes}: Resultado do treinamento enviado do cliente para o servidor
+\item \texttt{EvaluateIns}: Instrução de avaliação
+\item \texttt{EvaluateRes}: Resultado da avaliação
+\end{itemize}
+
+A serialização de parâmetros segue o padrão:
+
+\begin{equation}
+\text{bytes} = \text{serialize}(w) \rightarrow \text{Parameters}(\text{tensors}=[\text{bytes}])
+\end{equation}
+
+\begin{equation}
+w = \text{deserialize}(\text{Parameters}.\text{tensors})
+\end{equation}
+
+\textbf{Simulação e Deployment}
+
+Flower oferece 2 modos de operação:
+
+\textit{Simulation Mode:} Simula múltiplos clientes em uma única máquina usando Ray para processamento distribuído. Útil para pesquisa e experimentação rápida:
+
+\begin{equation}
+\text{num\_supernodes} \times \text{num\_clients\_per\_supernode} = \text{total\_clients}
+\end{equation}
+
+\textit{Deployment Mode:} Clientes e servidor executam em processos ou máquinas separadas, comunicando-se através de rede. Adequado para ambientes de produção e cenários cross-device reais.
+
+\textbf{Ciclo de Vida de uma Rodada}
+
+O ciclo completo de uma rodada de treinamento no Flower envolve 7 etapas:
+
+\begin{enumerate}
+\item \textbf{Seleção:} Servidor executa \texttt{configure\_fit()} da estratégia para selecionar clientes
+\item \textbf{Broadcast:} Servidor envia \texttt{FitIns} contendo parâmetros globais para clientes selecionados
+\item \textbf{Treinamento Local:} Cada cliente executa \texttt{fit()} e treina o modelo localmente
+\item \textbf{Upload:} Clientes enviam \texttt{FitRes} contendo parâmetros atualizados e métricas
+\item \textbf{Agregação:} Servidor executa \texttt{aggregate\_fit()} para combinar atualizações
+\item \textbf{Atualização:} Modelo global é atualizado com parâmetros agregados
+\item \textbf{Avaliação:} Servidor ou clientes avaliam o novo modelo global
+\end{enumerate}
+

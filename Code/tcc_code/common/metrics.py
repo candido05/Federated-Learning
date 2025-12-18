@@ -19,8 +19,7 @@ from sklearn.metrics import (
 from flwr.common.logger import log
 from logging import WARNING
 
-# Constantes do dataset
-NUM_CLASSES = 3  # Dataset de veículos sempre tem 3 classes
+NUM_CLASSES = 3
 
 
 def calculate_comprehensive_metrics(y_true, y_pred_proba, threshold=0.5) -> Dict:
@@ -35,61 +34,49 @@ def calculate_comprehensive_metrics(y_true, y_pred_proba, threshold=0.5) -> Dict
     Returns:
         Dict com métricas: accuracy, precision, recall, F1, AUC, confusion matrix
     """
-    # Obter predições (argmax das probabilidades)
     if len(y_pred_proba.shape) == 1:
         y_pred = y_pred_proba.astype(int)
     else:
         y_pred = np.argmax(y_pred_proba, axis=1)
 
-    # Métricas básicas
     accuracy = accuracy_score(y_true, y_pred)
 
-    # AUC (macro average para 3 classes)
     try:
         auc = roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='macro')
     except Exception as e:
         log(WARNING, f"Erro ao calcular AUC: {e}")
         auc = 0.5
 
-    # Métricas weighted (ponderadas pelo suporte de cada classe)
-    # NOTA: recall_weighted = accuracy (matematicamente correto!)
     precision_weighted = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     recall_weighted = recall_score(y_true, y_pred, average='weighted', zero_division=0)
     f1_weighted = f1_score(y_true, y_pred, average='weighted', zero_division=0)
 
-    # Métricas macro (média simples entre classes, sem ponderação)
-    # ÚTIL: Detecta viés em classes minoritárias
     precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
     recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
     f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
 
-    # Matriz de confusão
     cm = confusion_matrix(y_true, y_pred)
 
-    # Métricas adicionais para classes desbalanceadas
     balanced_acc = balanced_accuracy_score(y_true, y_pred)
     mcc = matthews_corrcoef(y_true, y_pred)
 
-    # Recall por classe individual (CRÍTICO para classes minoritárias!)
     recall_per_class = recall_score(y_true, y_pred, average=None, zero_division=0)
     precision_per_class = precision_score(y_true, y_pred, average=None, zero_division=0)
     f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0)
 
-    # Dicionário de métricas
     metrics = {
         'accuracy': float(accuracy),
-        'balanced_accuracy': float(balanced_acc),  # NOVO: Melhor que accuracy para desbalanceamento
-        'mcc': float(mcc),  # NOVO: Matthews Correlation Coefficient
+        'balanced_accuracy': float(balanced_acc),
+        'mcc': float(mcc),
         'precision_weighted': float(precision_weighted),
         'recall_weighted': float(recall_weighted),
         'f1_score_weighted': float(f1_weighted),
         'precision_macro': float(precision_macro),
-        'recall_macro': float(recall_macro),  # PRIORIDADE!
-        'f1_score_macro': float(f1_macro),    # PRIORIDADE!
+        'recall_macro': float(recall_macro),
+        'f1_score_macro': float(f1_macro),
         'auc': float(auc),
         'num_classes': NUM_CLASSES,
         'confusion_matrix': cm.tolist(),
-        # Métricas por classe (essencial para detectar problemas!)
         'recall_class_0': float(recall_per_class[0]),
         'recall_class_1': float(recall_per_class[1]),
         'recall_class_2': float(recall_per_class[2]),

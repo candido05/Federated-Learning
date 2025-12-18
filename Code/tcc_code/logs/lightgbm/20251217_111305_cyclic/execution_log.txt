@@ -1,0 +1,335 @@
+
+================================================================================
+INICIANDO EXPERIMENTO: LIGHTGBM - CYCLIC
+================================================================================
+Configuração:
+  - Algoritmo: lightgbm
+  - Estratégia: cyclic
+  - Número de clientes: 3
+  - Rodadas globais: 10
+  - Rodadas locais: 50
+  - Amostras por cliente: 38409
+================================================================================
+
+
+[SERVER] Round 1 Métricas de Performance:
+  Acurácia:           0.9254
+  Balanced Accuracy:  0.5828  [PRIORIDADE]
+  MCC:                0.5639
+  AUC:                0.8218 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8916
+    Revocação: 0.5828  [METRICA PRINCIPAL]
+    F1-Score:  0.6703  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3277
+    Classe 1 (majoritária): 0.9941
+    Classe 2 (minoritária): 0.4267
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [463, 935, 15]
+    Classe 1: [72, 25478, 79]
+    Classe 2: [7, 1045, 783]
+
+[SERVER] Round 2 Métricas de Performance:
+  Acurácia:           0.9260
+  Balanced Accuracy:  0.5889  [PRIORIDADE]
+  MCC:                0.5687
+  AUC:                0.8224 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8878
+    Revocação: 0.5889  [METRICA PRINCIPAL]
+    F1-Score:  0.6759  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3404
+    Classe 1 (majoritária): 0.9936
+    Classe 2 (minoritária): 0.4327
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [481, 915, 17]
+    Classe 1: [84, 25466, 79]
+    Classe 2: [6, 1035, 794]
+
+[SERVER] Round 3 Métricas de Performance:
+  Acurácia:           0.9266
+  Balanced Accuracy:  0.5964  [PRIORIDADE]
+  MCC:                0.5739
+  AUC:                0.8236 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8821
+    Revocação: 0.5964  [METRICA PRINCIPAL]
+    F1-Score:  0.6819  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3475
+    Classe 1 (majoritária): 0.9927
+    Classe 2 (minoritária): 0.4490
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [491, 904, 18]
+    Classe 1: [85, 25443, 101]
+    Classe 2: [7, 1004, 824]
+
+[SERVER] Round 4 Métricas de Performance:
+  Acurácia:           0.9264
+  Balanced Accuracy:  0.5962  [PRIORIDADE]
+  MCC:                0.5727
+  AUC:                0.8227 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8822
+    Revocação: 0.5962  [METRICA PRINCIPAL]
+    F1-Score:  0.6819  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3524
+    Classe 1 (majoritária): 0.9927
+    Classe 2 (minoritária): 0.4436
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [498, 897, 18]
+    Classe 1: [84, 25441, 104]
+    Classe 2: [6, 1015, 814]
+
+[SERVER] Round 5 Métricas de Performance:
+  Acurácia:           0.9262
+  Balanced Accuracy:  0.5958  [PRIORIDADE]
+  MCC:                0.5712
+  AUC:                0.8210 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8784
+    Revocação: 0.5958  [METRICA PRINCIPAL]
+    F1-Score:  0.6808  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3482
+    Classe 1 (majoritária): 0.9924
+    Classe 2 (minoritária): 0.4469
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [492, 904, 17]
+    Classe 1: [94, 25434, 101]
+    Classe 2: [6, 1009, 820]
+
+[SERVER] Round 6 Métricas de Performance:
+  Acurácia:           0.9259
+  Balanced Accuracy:  0.5983  [PRIORIDADE]
+  MCC:                0.5700
+  AUC:                0.8191 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8725
+    Revocação: 0.5983  [METRICA PRINCIPAL]
+    F1-Score:  0.6819  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3517
+    Classe 1 (majoritária): 0.9915
+    Classe 2 (minoritária): 0.4518
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [497, 898, 18]
+    Classe 1: [97, 25412, 120]
+    Classe 2: [5, 1001, 829]
+
+[SERVER] Round 7 Métricas de Performance:
+  Acurácia:           0.9250
+  Balanced Accuracy:  0.5948  [PRIORIDADE]
+  MCC:                0.5634
+  AUC:                0.8192 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8667
+    Revocação: 0.5948  [METRICA PRINCIPAL]
+    F1-Score:  0.6777  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3496
+    Classe 1 (majoritária): 0.9912
+    Classe 2 (minoritária): 0.4436
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [494, 902, 17]
+    Classe 1: [108, 25403, 118]
+    Classe 2: [6, 1015, 814]
+
+[SERVER] Round 8 Métricas de Performance:
+  Acurácia:           0.9251
+  Balanced Accuracy:  0.5952  [PRIORIDADE]
+  MCC:                0.5640
+  AUC:                0.8177 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8689
+    Revocação: 0.5952  [METRICA PRINCIPAL]
+    F1-Score:  0.6786  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3539
+    Classe 1 (majoritária): 0.9913
+    Classe 2 (minoritária): 0.4403
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [500, 897, 16]
+    Classe 1: [106, 25406, 117]
+    Classe 2: [5, 1022, 808]
+
+[SERVER] Round 9 Métricas de Performance:
+  Acurácia:           0.9247
+  Balanced Accuracy:  0.5968  [PRIORIDADE]
+  MCC:                0.5623
+  AUC:                0.8181 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8604
+    Revocação: 0.5968  [METRICA PRINCIPAL]
+    F1-Score:  0.6785  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3531
+    Classe 1 (majoritária): 0.9904
+    Classe 2 (minoritária): 0.4469
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [499, 897, 17]
+    Classe 1: [119, 25384, 126]
+    Classe 2: [6, 1009, 820]
+
+[SERVER] Round 10 Métricas de Performance:
+  Acurácia:           0.9244
+  Balanced Accuracy:  0.5950  [PRIORIDADE]
+  MCC:                0.5597
+  AUC:                0.8179 (macro avg)
+
+  Métricas Macro (média não-ponderada - PRIORIZAR!):
+    Precisão:  0.8597
+    Revocação: 0.5950  [METRICA PRINCIPAL]
+    F1-Score:  0.6765  [METRICA PRINCIPAL]
+
+  Recall por Classe (detectar problemas em classes minoritárias):
+    Classe 0 (minoritária): 0.3489
+    Classe 1 (majoritária): 0.9904
+    Classe 2 (minoritária): 0.4458
+
+  Matriz de Confusão (3 classes):
+    Classe 0: [493, 903, 17]
+    Classe 1: [117, 25382, 130]
+    Classe 2: [5, 1012, 818]
+
+================================================================================
+RESUMO DAS MÉTRICAS POR RODADA:
+================================================================================
+
+Round 1:
+  Acurácia:    0.9254
+  AUC:         0.8218
+  [Weighted] Precisão:  0.9221
+  [Weighted] Revocação: 0.9254
+  [Weighted] F1-Score:  0.9118
+  [Macro] Precisão:  0.8916
+  [Macro] Revocação: 0.5828
+  [Macro] F1-Score:  0.6703
+
+Round 2:
+  Acurácia:    0.9260
+  AUC:         0.8224
+  [Weighted] Precisão:  0.9223
+  [Weighted] Revocação: 0.9260
+  [Weighted] F1-Score:  0.9129
+  [Macro] Precisão:  0.8878
+  [Macro] Revocação: 0.5889
+  [Macro] F1-Score:  0.6759
+
+Round 3:
+  Acurácia:    0.9266
+  AUC:         0.8236
+  [Weighted] Precisão:  0.9223
+  [Weighted] Revocação: 0.9266
+  [Weighted] F1-Score:  0.9142
+  [Macro] Precisão:  0.8821
+  [Macro] Revocação: 0.5964
+  [Macro] F1-Score:  0.6819
+
+Round 4:
+  Acurácia:    0.9264
+  AUC:         0.8227
+  [Weighted] Precisão:  0.9222
+  [Weighted] Revocação: 0.9264
+  [Weighted] F1-Score:  0.9140
+  [Macro] Precisão:  0.8822
+  [Macro] Revocação: 0.5962
+  [Macro] F1-Score:  0.6819
+
+Round 5:
+  Acurácia:    0.9262
+  AUC:         0.8210
+  [Weighted] Precisão:  0.9217
+  [Weighted] Revocação: 0.9262
+  [Weighted] F1-Score:  0.9138
+  [Macro] Precisão:  0.8784
+  [Macro] Revocação: 0.5958
+  [Macro] F1-Score:  0.6808
+
+Round 6:
+  Acurácia:    0.9259
+  AUC:         0.8191
+  [Weighted] Precisão:  0.9209
+  [Weighted] Revocação: 0.9259
+  [Weighted] F1-Score:  0.9138
+  [Macro] Precisão:  0.8725
+  [Macro] Revocação: 0.5983
+  [Macro] F1-Score:  0.6819
+
+Round 7:
+  Acurácia:    0.9250
+  AUC:         0.8192
+  [Weighted] Precisão:  0.9195
+  [Weighted] Revocação: 0.9250
+  [Weighted] F1-Score:  0.9127
+  [Macro] Precisão:  0.8667
+  [Macro] Revocação: 0.5948
+  [Macro] F1-Score:  0.6777
+
+Round 8:
+  Acurácia:    0.9251
+  AUC:         0.8177
+  [Weighted] Precisão:  0.9198
+  [Weighted] Revocação: 0.9251
+  [Weighted] F1-Score:  0.9128
+  [Macro] Precisão:  0.8689
+  [Macro] Revocação: 0.5952
+  [Macro] F1-Score:  0.6786
+
+Round 9:
+  Acurácia:    0.9247
+  AUC:         0.8181
+  [Weighted] Precisão:  0.9188
+  [Weighted] Revocação: 0.9247
+  [Weighted] F1-Score:  0.9127
+  [Macro] Precisão:  0.8604
+  [Macro] Revocação: 0.5968
+  [Macro] F1-Score:  0.6785
+
+Round 10:
+  Acurácia:    0.9244
+  AUC:         0.8179
+  [Weighted] Precisão:  0.9183
+  [Weighted] Revocação: 0.9244
+  [Weighted] F1-Score:  0.9122
+  [Macro] Precisão:  0.8597
+  [Macro] Revocação: 0.5950
+  [Macro] F1-Score:  0.6765
+
+
+================================================================================
+EXPERIMENTO CONCLUÍDO: LIGHTGBM - CYCLIC
+Tempo total: 74.01 segundos
+Total de rodadas executadas: 10
+================================================================================
+

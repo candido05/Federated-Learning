@@ -1,0 +1,13 @@
+
+================================================================================
+INICIANDO EXPERIMENTO: XGBOOST - CYCLIC
+================================================================================
+Configuração:
+  - Algoritmo: xgboost
+  - Estratégia: cyclic
+  - Número de clientes: 3
+  - Rodadas globais: 50
+  - Rodadas locais: 50
+  - Amostras por cliente: 38409
+================================================================================
+

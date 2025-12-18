@@ -14,12 +14,15 @@ from flwr.common.context import Context
 from flwr.common.logger import log
 from logging import INFO, WARNING
 
-from common import DataProcessor, replace_keys, ExperimentLogger
+from common import (
+    DataProcessor, replace_keys, ExperimentLogger,
+    get_stable_tree_params, ClientCyclingStrategy
+)
 from .client import LightGBMClient
 from .server import create_server_fn
 
 
-def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict):
+def create_client_fn(data_processor: DataProcessor, num_local_round: int, params: dict, advanced_config: dict = None):
     """Factory function para criar função de cliente"""
 
     def client_fn(context: Context):
@@ -42,7 +45,8 @@ def create_client_fn(data_processor: DataProcessor, num_local_round: int, params
         return LightGBMClient(
             train_data, valid_data, num_train, num_val,
             num_local_round, params, cfg.get("train_method", "cyclic"),
-            partition_id, X_valid=valid_X, y_valid=valid_y
+            partition_id, X_valid=valid_X, y_valid=valid_y,
+            train_y=train_y, advanced_config=advanced_config
         ).to_client()
 
     return client_fn
@@ -77,8 +81,11 @@ def safe_run_simulation(server_app, client_app, num_supernodes, backend_config=N
 
 def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
                             num_server_rounds: int, num_local_boost_round: int,
-                            train_method: str = "cyclic", seed: int = 42):
+                            train_method: str = "cyclic", seed: int = 42,
+                            advanced_config: dict = None):
     """Executa experimento de Federated Learning com LightGBM"""
+    advanced_config = advanced_config or {}
+
     logger = ExperimentLogger(
         algorithm_name="lightgbm",
         strategy_name=train_method,
@@ -104,6 +111,7 @@ def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
         objective = "multiclass"
         metric = "multi_logloss"
 
+    # Parâmetros base
     params = {
         "objective": objective,
         "metric": metric,
@@ -115,14 +123,23 @@ def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
         "seed": seed
     }
 
+    # Aplicar parâmetros estáveis se configurado
+    if advanced_config.get('use_stable_params'):
+        stable_params = get_stable_tree_params('lightgbm')
+        params.update(stable_params)
+        log(INFO, f"[STABLE PARAMS] Aplicados: {stable_params}")
+
     if num_classes > 2:
         params["num_class"] = num_classes
 
+    # Adicionar num_server_rounds ao advanced_config para curriculum learning
+    advanced_config['num_server_rounds'] = num_server_rounds
+
     # Criar aplicações cliente e servidor
-    client_fn = create_client_fn(data_processor, num_local_boost_round, params)
+    client_fn = create_client_fn(data_processor, num_local_boost_round, params, advanced_config)
     client_app = ClientApp(client_fn=client_fn)
 
-    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger)
+    server_fn = create_server_fn(data_processor, num_server_rounds, params, logger, advanced_config)
     server_app = ServerApp(server_fn=server_fn)
 
     # Configurar recursos

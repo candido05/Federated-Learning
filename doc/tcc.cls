@@ -7,11 +7,36 @@
 \RequirePackage{graphicx}
 \RequirePackage{indentfirst}
 \RequirePackage{float}
-\RequirePackage{setspace} 
+\RequirePackage{setspace}
 \RequirePackage{afterpage}
 \RequirePackage{tabularx}
 \RequirePackage{fancyhdr}
 \RequirePackage[labelfont=bf,textfont=bf]{caption}
+
+% Pacotes matemáticos
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{amsfonts}
+
+% Pacote para referências bibliográficas
+\RequirePackage{cite}
+
+% Pacote para URLs e hyperlinks
+\RequirePackage{url}
+\RequirePackage[hidelinks]{hyperref}
+
+% Pacote para código verbatim melhorado
+\RequirePackage{fancyvrb}
+
+% Pacote para arrays e tabelas matemáticas
+\RequirePackage{array}
+
+% Pacote para ambientes de teoremas
+\RequirePackage{amsthm}
+
+% Pacote para enumeração customizada
+\RequirePackage{enumerate}
+\RequirePackage{enumitem}
 
 \usepackage{listings}
 \usepackage{color}
