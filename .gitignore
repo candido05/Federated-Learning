@@ -177,3 +177,6 @@ cython_debug/
 CLAUDE.md
 .claude/
 template/
+
+# CatBoost info directory
+catboost_info/

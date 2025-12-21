@@ -91,6 +91,24 @@ class DataProcessor:
         X_train_all = self.scaler.transform(X_train_all)
         X_test_all = self.scaler.transform(X_test_all)
 
+        if self.balance_strategy and self.balance_strategy != 'weights':
+            log(INFO, f"\n[BALANCEAMENTO PRÉ-PARTICIONAMENTO] Aplicando {self.balance_strategy}...")
+            log(INFO, f"  ANTES do balanceamento: {len(y_train_all)} amostras")
+            unique_before, counts_before = np.unique(y_train_all, return_counts=True)
+            for cls, count in zip(unique_before, counts_before):
+                log(INFO, f"    Classe {cls}: {count} ({count/len(y_train_all)*100:.1f}%)")
+
+            X_train_all, y_train_all = self._balance_classes(X_train_all, y_train_all)
+
+            log(INFO, f"  APÓS balanceamento: {len(y_train_all)} amostras")
+            unique_after, counts_after = np.unique(y_train_all, return_counts=True)
+            for cls, count in zip(unique_after, counts_after):
+                log(INFO, f"    Classe {cls}: {count} ({count/len(y_train_all)*100:.1f}%)")
+
+            log(WARNING, "  [IMPORTANTE] Balanceamento com dados sintéticos - usando particionamento IID")
+            log(WARNING, "  [IMPORTANTE] Particionamento por veículo NÃO é compatível com SMOTE/oversampling")
+            return self._partition_iid(X_train_all, y_train_all, X_test_all, y_test_all)
+
         np.random.seed(self.seed)
 
         if self.vehicles_per_client:
@@ -139,17 +157,11 @@ class DataProcessor:
             client_X = X_train_all[mask]
             client_y = y_train_all[mask]
 
-            unique_before, counts_before = np.unique(client_y, return_counts=True)
-            log(INFO, f"\n  Cliente {client_id} - ANTES do balanceamento:")
+            log(INFO, f"\n  Cliente {client_id}:")
             log(INFO, f"    Veículos: {len(client_vehicle_ids)} | Amostras: {len(client_y)}")
-            for cls, count in zip(unique_before, counts_before):
+            unique_classes, counts = np.unique(client_y, return_counts=True)
+            for cls, count in zip(unique_classes, counts):
                 log(INFO, f"    Classe {cls}: {count} ({count/len(client_y)*100:.1f}%)")
-
-            if self.balance_strategy:
-                client_X, client_y = self._balance_classes(client_X, client_y)
-                log(INFO, f"  Cliente {client_id} - APÓS balanceamento: {len(client_y)} amostras")
-            else:
-                log(INFO, f"  Cliente {client_id} - Balanceamento NÃO aplicado")
 
             self.partitions_X.append(client_X)
             self.partitions_y.append(client_y)
@@ -163,7 +175,8 @@ class DataProcessor:
         log(INFO, f"  - Total distribuído: {sum(len(p) for p in self.partitions_X)}")
         log(INFO, f"  - Validação centralizada: {len(self.X_test_all)} amostras")
 
-        log(INFO, "\nDistribuição FINAL por cliente (APÓS balanceamento):")
+        balance_msg = "APÓS balanceamento pré-particionamento" if self.balance_strategy else "dados originais"
+        log(INFO, f"\nDistribuição FINAL por cliente ({balance_msg}):")
         for i, (y_part, veh_ids) in enumerate(zip(self.partitions_y, client_vehicles)):
             unique, counts = np.unique(y_part, return_counts=True)
             dist = dict(zip(unique, counts))
@@ -185,20 +198,32 @@ class DataProcessor:
         from sklearn.utils import shuffle
         X_train_all, y_train_all = shuffle(X_train_all, y_train_all, random_state=self.seed)
 
-        if self.balance_strategy:
-            X_train_all, y_train_all = self._balance_classes(X_train_all, y_train_all)
-
         total_samples = X_train_all.shape[0]
-        log(INFO, f"Particionando {total_samples} amostras entre {self.num_clients} clientes (IID)...")
+        log(INFO, f"\n[PARTICIONAMENTO IID] Distribuindo {total_samples} amostras entre {self.num_clients} clientes...")
         self.partitions_X = np.array_split(X_train_all, self.num_clients)
         self.partitions_y = np.array_split(y_train_all, self.num_clients)
         self.X_test_all = X_test_all
         self.y_test_all = y_test_all
         self.samples_per_client = len(self.partitions_X[0])
 
-        log(INFO, f"[OK] Dataset particionado (IID) com sucesso!")
-        log(INFO, f"  - Amostras por cliente: {self.samples_per_client}")
+        log(INFO, f"\n[OK] Dataset particionado (IID) com sucesso!")
+        log(INFO, f"  - Amostras por cliente: ~{self.samples_per_client}")
         log(INFO, f"  - Total distribuído: {sum(len(p) for p in self.partitions_X)}")
+
+        balance_msg = "APÓS balanceamento pré-particionamento" if self.balance_strategy else "dados originais"
+        log(INFO, f"\nDistribuição por cliente ({balance_msg}):")
+        for i, y_part in enumerate(self.partitions_y):
+            unique, counts = np.unique(y_part, return_counts=True)
+            dist = dict(zip(unique, counts))
+            percentages = {k: f"{v/len(y_part)*100:.1f}%" for k, v in dist.items()}
+            log(INFO, f"  Cliente {i}: {len(y_part)} amostras | Classes: {percentages}")
+
+            if len(counts) == 3:
+                max_diff = (max(counts) - min(counts)) / len(y_part) * 100
+                if max_diff < 5:
+                    log(INFO, f"    [OK] Balanceado! Diferença máxima: {max_diff:.1f}%")
+                elif max_diff > 50:
+                    log(WARNING, f"    [AVISO] Desbalanceado! Diferença máxima: {max_diff:.1f}%")
 
         return self.partitions_X, self.partitions_y, self.X_test_all, self.y_test_all
 
@@ -283,9 +308,6 @@ class DataProcessor:
     def _balance_classes(self, X: np.ndarray, y: np.ndarray):
         """Aplica balanceamento de classes conforme estratégia configurada"""
         unique, counts = np.unique(y, return_counts=True)
-        log(INFO, f"\n[BALANCEAMENTO] Distribuição original de classes:")
-        for cls, count in zip(unique, counts):
-            log(INFO, f"  Classe {cls}: {count} ({count/len(y)*100:.1f}%)")
 
         if self.balance_strategy == 'weights':
             from sklearn.utils.class_weight import compute_class_weight
@@ -307,17 +329,14 @@ class DataProcessor:
         try:
             if self.balance_strategy == 'oversample':
                 sampler = RandomOverSampler(random_state=self.seed)
-                log(INFO, f"\n[BALANCEAMENTO] Estratégia: Random Oversampling")
 
             elif self.balance_strategy == 'smote':
                 min_samples = min(counts)
                 k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
                 sampler = SMOTE(random_state=self.seed, k_neighbors=k_neighbors)
-                log(INFO, f"\n[BALANCEAMENTO] Estratégia: SMOTE (k_neighbors={k_neighbors})")
 
             elif self.balance_strategy == 'undersample':
                 sampler = RandomUnderSampler(random_state=self.seed)
-                log(INFO, f"\n[BALANCEAMENTO] Estratégia: Random Undersampling")
 
             elif self.balance_strategy == 'combined':
                 min_samples = min(counts)
@@ -326,8 +345,6 @@ class DataProcessor:
                     smote=SMOTE(random_state=self.seed, k_neighbors=k_neighbors),
                     random_state=self.seed
                 )
-                log(INFO, f"\n[BALANCEAMENTO] Estratégia: SMOTE + Tomek Links (k_neighbors={k_neighbors})")
-                log(INFO, f"  Combina oversampling com limpeza de fronteira de decisão")
 
             elif self.balance_strategy == 'smoteenn':
                 min_samples = min(counts)
@@ -336,8 +353,6 @@ class DataProcessor:
                     smote=SMOTE(random_state=self.seed, k_neighbors=k_neighbors),
                     random_state=self.seed
                 )
-                log(INFO, f"\n[BALANCEAMENTO] Estratégia: SMOTE + ENN (k_neighbors={k_neighbors})")
-                log(INFO, f"  Combina oversampling com limpeza agressiva de ruído")
 
             else:
                 log(WARNING, f"[BALANCEAMENTO] Estratégia '{self.balance_strategy}' desconhecida.")
@@ -345,14 +360,6 @@ class DataProcessor:
                 return X, y
 
             X_balanced, y_balanced = sampler.fit_resample(X, y)
-
-            unique_bal, counts_bal = np.unique(y_balanced, return_counts=True)
-            log(INFO, f"  Distribuição balanceada:")
-            for cls, count in zip(unique_bal, counts_bal):
-                log(INFO, f"    Classe {cls}: {count} ({count/len(y_balanced)*100:.1f}%)")
-
-            log(INFO, f"  Total: {len(y)} -> {len(y_balanced)} amostras")
-
             return X_balanced, y_balanced
 
         except Exception as e:

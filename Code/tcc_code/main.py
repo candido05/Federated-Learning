@@ -284,14 +284,16 @@ IMPORTANTE:
 
     args = parser.parse_args()
 
-    config = {
+    config = DEFAULT_CONFIG.copy()
+    config.update({
         "num_clients": args.num_clients,
         "num_server_rounds": args.num_rounds,
         "num_local_boost_round": args.local_rounds,
         "seed": args.seed,
-        "use_all_data": True,
-        "balance_strategy": args.balance
-    }
+    })
+
+    if args.balance is not None:
+        config["balance_strategy"] = args.balance
 
     if args.algorithm == "all":
         algorithms = ["xgboost", "lightgbm", "catboost"]

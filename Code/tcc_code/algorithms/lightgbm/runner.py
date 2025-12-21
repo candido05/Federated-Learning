@@ -104,12 +104,9 @@ def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
     num_classes = len(np.unique(data_processor.y_test_all))
     log(INFO, f"Número de classes detectadas: {num_classes}")
 
-    if num_classes == 2:
-        objective = "binary"
-        metric = "binary_logloss"
-    else:
-        objective = "multiclass"
-        metric = "multi_logloss"
+   
+    objective = "multiclass"
+    metric = "multi_logloss"
 
     # Parâmetros base
     params = {
@@ -129,8 +126,8 @@ def run_lightgbm_experiment(data_processor: DataProcessor, num_clients: int,
         params.update(stable_params)
         log(INFO, f"[STABLE PARAMS] Aplicados: {stable_params}")
 
-    if num_classes > 2:
-        params["num_class"] = num_classes
+    
+    params["num_class"] = num_classes
 
     # Adicionar num_server_rounds ao advanced_config para curriculum learning
     advanced_config['num_server_rounds'] = num_server_rounds

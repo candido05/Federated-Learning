@@ -98,12 +98,9 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
     num_classes = len(np.unique(data_processor.y_test_all))
     log(INFO, f"Número de classes detectadas: {num_classes}")
 
-    if num_classes == 2:
-        loss_function = "Logloss"
-        eval_metric = "AUC"
-    else:
-        loss_function = "MultiClass"
-        eval_metric = "MultiClass"
+    
+    loss_function = "MultiClass"
+    eval_metric = "MultiClass"
 
     params = {
         "iterations": num_local_boost_round,
@@ -113,7 +110,8 @@ def run_catboost_experiment(data_processor: DataProcessor, num_clients: int,
         "depth": 6,
         "task_type": task_type,
         "verbose": False,
-        "random_seed": seed
+        "random_seed": seed,
+        "allow_writing_files": False
     }
 
     if num_classes > 2:
