@@ -102,11 +102,14 @@ class LightGBMClient(Client):
 
         verbose_callback = VerboseCallback(self.cid, global_round, self.num_local_round)
 
+
+
+
+
         if global_round <= 1 or not ins.parameters.tensors:
             bst = lgb.train(
                 self.params,
                 self.train_data,
-                num_boost_round=self.num_local_round,
                 valid_sets=[self.valid_data],
                 valid_names=['valid'],
                 callbacks=[verbose_callback],
@@ -126,6 +129,7 @@ class LightGBMClient(Client):
                     init_model=temp_model_path,
                     valid_sets=[self.valid_data],
                     valid_names=['valid'],
+                    fobj=fobj,
                     callbacks=[verbose_callback],
                 )
 
@@ -138,7 +142,6 @@ class LightGBMClient(Client):
                     self.params,
                     self.train_data,
                     num_boost_round=self.num_local_round,
-                    valid_sets=[self.valid_data],
                     valid_names=['valid'],
                     callbacks=[verbose_callback],
                 )

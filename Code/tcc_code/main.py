@@ -35,25 +35,34 @@ TRAIN_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_all_veh
 VALIDATION_CSV = get_csv_path("dataset_fl/dataset/dataset_K400_seed42/dataset_validation_all_vehicles.csv")
 
 DEFAULT_CONFIG = {
-    "num_clients": 3,
-    "num_server_rounds": 50,
-    "num_local_boost_round": 50,
+    # FASE 3 OPTIMIZATIONS
+    "num_clients": 7,              # 10 → 7 (evitar OOM, mais dados por cliente)
+    "num_server_rounds": 25,       # 20 → 25 (melhor convergência)
+    "num_local_boost_round": 50,   # mantém (early stopping vai reduzir dinamicamente)
     "seed": 42,
     "use_all_data": False,
-    "vehicles_per_client": 40,
-    "balance_strategy": "oversample",
+    "vehicles_per_client": 20,     # 15 → 20 (total: 140 veículos)
+    "balance_strategy": "weights",  # APENAS weights (tree-based models)
     "stratified": True,
 
+    # Class Balancing - OTIMIZADO
     "use_class_weights": True,
-    "max_class_weight": 10.0,
-    "use_sample_weights": False,
+    "max_class_weight": 5.0,       # 10.0 → 5.0 (menos agressivo, melhor precision)
     "use_stable_params": True,
+
+    # Diversity & Advanced FL
     "diversity_aggregation": True,
-    "diversity_alpha": 0.5,
+    "diversity_alpha": 0.8,
     "penalize_mono_class": True,
     "use_curriculum": True,
     "curriculum_warmup": 5,
     "use_entropy_cycling": True,
+
+    # FASE 3: Configurações Avançadas
+    "use_early_stopping": True,
+    "early_stopping_rounds": 5,
+    "balance_strategy": "weights",  # 'weights' (apenas tree weights)
+    "max_class_weight": 5.0,        # Limite para pesos (estabilidade)
 }
 
 
@@ -111,6 +120,8 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
             'use_curriculum': config.get('use_curriculum', False),
             'curriculum_warmup': config.get('curriculum_warmup', 5),
             'use_entropy_cycling': config.get('use_entropy_cycling', False),
+            'use_early_stopping': config.get('use_early_stopping', False),
+            'early_stopping_rounds': config.get('early_stopping_rounds', 5),
         }
 
         if algorithm == "xgboost":
@@ -158,17 +169,6 @@ def run_single_experiment(algorithm: str, strategy: str, config: dict):
 
 
 def run_all_experiments(algorithms: list, strategies: list, config: dict):
-    """
-    Executa múltiplos experimentos sequencialmente
-
-    Args:
-        algorithms: Lista de algoritmos a executar
-        strategies: Lista de estratégias a executar
-        config: Configuração dos experimentos
-
-    Returns:
-        Dicionário com resultados de todos os experimentos
-    """
     all_results = {}
     total_experiments = len(algorithms) * len(strategies)
     current_experiment = 0
@@ -178,7 +178,7 @@ def run_all_experiments(algorithms: list, strategies: list, config: dict):
     print(f"{'='*80}")
     print(f"Total de experimentos: {total_experiments}")
     print(f"Algoritmos: {', '.join(algorithms)}")
-    print(f"Estratégias: {', '.join(strategies)}")
+    print(f"Estrategias: {', '.join(strategies)}")
     print(f"{'='*80}\n")
 
     for algorithm in algorithms:
@@ -194,9 +194,29 @@ def run_all_experiments(algorithms: list, strategies: list, config: dict):
 
             if result is not None and isinstance(result, dict) and result.get("success", False):
                 all_results[experiment_name] = result
-                print(f"[OK] {experiment_name} concluído ({current_experiment}/{total_experiments})")
+                print(f"[OK] {experiment_name} concluido ({current_experiment}/{total_experiments})")
+
+                print(f"\n{'#'*80}")
+                print(f"GERANDO PLOTS PARA {experiment_name.upper()}")
+                print(f"{'#'*80}\n")
+                try:
+                    from plot_generation import generate_single_algorithm_plots
+                    generate_single_algorithm_plots(algorithm, strategy)
+                except Exception as e:
+                    print(f"[AVISO] Erro ao gerar plots: {e}")
             else:
                 print(f"[ERRO] {experiment_name} falhou ({current_experiment}/{total_experiments})")
+
+    if all_results:
+        print(f"\n{'#'*80}")
+        print("GERANDO PLOTS DE COMPARACAO")
+        print(f"{'#'*80}\n")
+        try:
+            from plot_generation import generate_comparison_plots, load_all_experiments
+            all_data = load_all_experiments()
+            generate_comparison_plots(all_data)
+        except Exception as e:
+            print(f"[AVISO] Erro ao gerar plots de comparacao: {e}")
 
     return all_results
 
@@ -294,6 +314,14 @@ IMPORTANTE:
 
     if args.balance is not None:
         config["balance_strategy"] = args.balance
+
+    print(f"\n[CONFIG] Configuracao final:")
+    print(f"  - Clientes: {config['num_clients']}")
+    print(f"  - Rodadas globais: {config['num_server_rounds']}")
+    print(f"  - Rodadas locais: {config['num_local_boost_round']}")
+    print(f"  - Balanceamento: {config.get('balance_strategy', 'None')}")
+    print(f"  - Veiculos por cliente: {config.get('vehicles_per_client', 'todos')}")
+    print()
 
     if args.algorithm == "all":
         algorithms = ["xgboost", "lightgbm", "catboost"]

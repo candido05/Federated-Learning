@@ -30,24 +30,21 @@ class DataProcessor:
         """
         Args:
             num_clients: Número de clientes para particionar os dados
-            seed: Seed para reprodutibilidade
-            train_csv_path: Caminho para CSV de treino (OBRIGATÓRIO)
-            validation_csv_path: Caminho para CSV de validação (OBRIGATÓRIO)
-            use_all_data: Se True, usa TODOS os dados disponíveis distribuídos entre clientes
-            balance_strategy: Estratégia de balanceamento de classes:
-                - None: Sem balanceamento (padrão)
-                - 'oversample': Oversampling aleatório da classe minoritária
-                - 'smote': SMOTE (Synthetic Minority Over-sampling Technique)
-                - 'undersample': Undersampling da classe majoritária
-                - 'weights': Retorna pesos de classe (sem modificar dados)
-            vehicles_per_client: Número fixo de veículos por cliente (sobrescreve use_all_data)
-            stratified: Se True, garante representação proporcional de classes em cada cliente
+            seed: Semente aleatória
+            train_csv_path: Caminho para o CSV de treino
+            validation_csv_path: Caminho para o CSV de validação
+            use_all_data: Se True, usa todo o dataset (não apenas uma amostra)
+            balance_strategy: Estratégia de balanceamento ('smote', 'oversample', 'weights', ou None)
+            vehicles_per_client: Número de veículos para selecionar por cliente (se None, divide todo o dataset)
+            stratified: Se True, tenta garantir que cada cliente tenha todas as classes
         """
         if train_csv_path is None or validation_csv_path is None:
             raise ValueError("train_csv_path e validation_csv_path são obrigatórios!")
 
         self.num_clients = num_clients
         self.seed = seed
+        np.random.seed(seed)
+        
         self.use_all_data = use_all_data
         self.balance_strategy = balance_strategy
         self.vehicles_per_client = vehicles_per_client
@@ -295,7 +292,6 @@ class DataProcessor:
             y = df["label"].values.astype(int)
             cols_to_drop.append("label")
         else:
-            log(WARNING, "Coluna 'label' não encontrada. Usando última coluna como label.")
             y = df.iloc[:, -1].values.astype(int)
 
         if cols_to_drop:
@@ -306,9 +302,13 @@ class DataProcessor:
         return X, y, vehicle_ids
 
     def _balance_classes(self, X: np.ndarray, y: np.ndarray):
-        """Aplica balanceamento de classes conforme estratégia configurada"""
+        """
+        Aplica balanceamento de classes conforme estratégia configurada
+        FASE 3: Simplificado - apenas 'weights' suportado (melhor para tree-based models)
+        """
         unique, counts = np.unique(y, return_counts=True)
 
+        # FASE 3: APENAS class weights (SMOTE/oversampling removidos - incompatíveis com FL por veículo)
         if self.balance_strategy == 'weights':
             from sklearn.utils.class_weight import compute_class_weight
             classes = np.unique(y)
@@ -317,55 +317,19 @@ class DataProcessor:
 
             log(INFO, f"\n[BALANCEAMENTO] Estratégia: Class Weights")
             log(INFO, f"  Pesos calculados: {self.class_weights}")
-            log(INFO, f"  Dados NÃO modificados (usar scale_pos_weight no modelo)")
+            log(INFO, f"  Dados NÃO modificados (aplicar weights no modelo)")
 
             return X, y
 
-        if not IMBALANCE_AVAILABLE:
-            log(WARNING, "[BALANCEAMENTO] imblearn não disponível! Instale com: pip install imbalanced-learn")
-            log(WARNING, "  Usando dados sem balanceamento.")
+        elif self.balance_strategy is not None:
+            log(WARNING, f"[BALANCEAMENTO] Estratégia '{self.balance_strategy}' não suportada na FASE 3.")
+            log(WARNING, f"  APENAS 'weights' é suportado para tree-based models em FL.")
+            log(WARNING, f"  Razão: SMOTE/oversampling geram dados sintéticos incompatíveis com particionamento por veículo.")
+            log(WARNING, f"  Usando dados sem balanceamento.")
             return X, y
 
-        try:
-            if self.balance_strategy == 'oversample':
-                sampler = RandomOverSampler(random_state=self.seed)
-
-            elif self.balance_strategy == 'smote':
-                min_samples = min(counts)
-                k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
-                sampler = SMOTE(random_state=self.seed, k_neighbors=k_neighbors)
-
-            elif self.balance_strategy == 'undersample':
-                sampler = RandomUnderSampler(random_state=self.seed)
-
-            elif self.balance_strategy == 'combined':
-                min_samples = min(counts)
-                k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
-                sampler = SMOTETomek(
-                    smote=SMOTE(random_state=self.seed, k_neighbors=k_neighbors),
-                    random_state=self.seed
-                )
-
-            elif self.balance_strategy == 'smoteenn':
-                min_samples = min(counts)
-                k_neighbors = min(5, min_samples - 1) if min_samples > 1 else 1
-                sampler = SMOTEENN(
-                    smote=SMOTE(random_state=self.seed, k_neighbors=k_neighbors),
-                    random_state=self.seed
-                )
-
-            else:
-                log(WARNING, f"[BALANCEAMENTO] Estratégia '{self.balance_strategy}' desconhecida.")
-                log(WARNING, f"  Opções: oversample, smote, undersample, combined, smoteenn, weights")
-                return X, y
-
-            X_balanced, y_balanced = sampler.fit_resample(X, y)
-            return X_balanced, y_balanced
-
-        except Exception as e:
-            log(WARNING, f"[BALANCEAMENTO] Erro ao aplicar {self.balance_strategy}: {e}")
-            log(WARNING, "  Usando dados sem balanceamento.")
-            return X, y
+        # Sem balanceamento
+        return X, y
 
     def get_client_data(self, partition_id: int, test_fraction: float = 0.2,
                        centralised_eval_client: bool = False):

@@ -384,13 +384,21 @@ class ClientCyclingStrategy:
 
 def get_stable_tree_params(algorithm: str) -> Dict:
     """
-    Retorna hiperparâmetros para árvores mais estáveis
+    Retorna hiperparâmetros OTIMIZADOS para árvores mais estáveis e balanceadas
+
+    OTIMIZAÇÕES 2025-12-22:
+    - Foco em BALANCED ACCURACY e MACRO F1-SCORE
+    - Regularização mais forte para evitar overfitting após round 12-15
+    - Hiperparâmetros ajustados para classes desbalanceadas (88:5:7 ratio)
+    - Learning rate reduzido para convergência mais suave
+    - max_depth reduzido para evitar memorização da classe majoritária
 
     Características:
-    - Árvores rasas (max_depth menor)
-    - Learning rate menor
-    - Maior número de iterações
-    - Regularização mais forte
+    - Árvores rasas (max_depth 4-5) - evita overfitting
+    - Learning rate muito menor (0.05) - convergência suave
+    - Regularização forte (L1/L2)
+    - Subsample/colsample reduzidos - maior generalização
+    - max_delta_step (XGBoost) - ajuda com desbalanceamento
 
     Args:
         algorithm: 'xgboost', 'lightgbm', ou 'catboost'
@@ -400,37 +408,69 @@ def get_stable_tree_params(algorithm: str) -> Dict:
     """
     if algorithm == 'xgboost':
         return {
-            'max_depth': 4,  # Árvores rasas (antes: 6)
-            'eta': 0.05,  # Learning rate menor (antes: 0.3)
-            'min_child_weight': 3,  # Regularização
-            'subsample': 0.8,  # Bagging
-            'colsample_bytree': 0.8,  # Feature bagging
-            'gamma': 0.1,  # Poda de árvores
-            'lambda': 1.5,  # L2 regularization
-            'alpha': 0.5,  # L1 regularization
+            # BALANCEADO v2 2025-12-22: max_depth 4→5 (meio-termo, evita underfitting)
+            'max_depth': 5,
+            # BALANCEADO v2 2025-12-22: eta 0.05→0.03 (CRÍTICO - 0.05 causou instabilidade!)
+            'eta': 0.03,
+            # BALANCEADO v2 2025-12-22: min_child_weight 5→3 (meio-termo)
+            'min_child_weight': 3,
+            # BALANCEADO v2 2025-12-22: subsample 0.7→0.8 (menos agressivo)
+            'subsample': 0.8,
+            # BALANCEADO v2 2025-12-22: colsample 0.7→0.8 (menos agressivo)
+            'colsample_bytree': 0.8,
+            # Poda moderada
+            'gamma': 0.1,
+            # L2 regularization moderada
+            'lambda': 1.5,
+            # L1 regularization moderada
+            'alpha': 0.5,
+            # Ajuda com classes desbalanceadas
+            'max_delta_step': 1,
         }
 
     elif algorithm == 'lightgbm':
         return {
-            'max_depth': 4,
-            'learning_rate': 0.05,
-            'min_child_samples': 20,
+            # max_depth mantido
+            'max_depth': 6,
+            # BALANCEADO v2 2025-12-22: learning_rate 0.05→0.03 (CRÍTICO - era muito alto!)
+            'learning_rate': 0.03,
+            # BALANCEADO v2 2025-12-22: min_data_in_leaf 50→20 (50 era muito restritivo!)
+            'min_data_in_leaf': 20,
+            # BALANCEADO v2 2025-12-22: subsample 0.7→0.8 (menos agressivo)
             'subsample': 0.8,
             'subsample_freq': 1,
+            # BALANCEADO v2 2025-12-22: colsample 0.7→0.8 (menos agressivo)
             'colsample_bytree': 0.8,
+            # L1 regularization
             'reg_alpha': 0.5,
+            # L2 regularization
             'reg_lambda': 1.5,
-            'min_split_gain': 0.01,
+            # BALANCEADO v2 2025-12-22: min_split_gain 0.1→0.05 (menos agressivo)
+            'min_split_gain': 0.05,
+            # Num leaves mantido
+            'num_leaves': 31,
+            # Melhor para dados desbalanceados
+            'boost_from_average': True,
         }
 
     elif algorithm == 'catboost':
+        # BALANCEADO v2 2025-12-22: Parâmetros ajustados
         return {
-            'depth': 4,
-            'learning_rate': 0.05,
-            'min_data_in_leaf': 20,
+            # depth mantido em 5
+            'depth': 5,
+            # BALANCEADO v2 2025-12-22: learning_rate 0.05→0.03 (CRÍTICO - era muito alto!)
+            'learning_rate': 0.03,
+            # min_data_in_leaf mantido
+            'min_data_in_leaf': 10,
+            'bootstrap_type': 'Bernoulli',
+            # Máxima granularidade
+            'border_count': 254,
+            # BALANCEADO v2 2025-12-22: subsample 0.7→0.8 (menos agressivo)
             'subsample': 0.8,
-            'rsm': 0.8,  # colsample_bytree
-            'l2_leaf_reg': 3.0,
+            # rsm mantido
+            'rsm': 0.8,
+            # BALANCEADO v2 2025-12-22: l2_leaf_reg 5.0→3.5 (meio-termo)
+            'l2_leaf_reg': 3.5,
             'random_strength': 0.5,
         }
 

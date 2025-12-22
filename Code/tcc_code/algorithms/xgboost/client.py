@@ -105,12 +105,20 @@ class XGBoostClient(Client):
 
         verbose_callback = VerboseCallback(self.cid, global_round)
 
+        # FASE 3: Early Stopping
+        early_stopping_rounds = None
+        if self.advanced_config.get('use_early_stopping', False):
+            early_stopping_rounds = self.advanced_config.get('early_stopping_rounds', 5)
+            print(f"  [EARLY STOPPING] Ativo com {early_stopping_rounds} rounds de paciência")
+
+
         if global_round <= 1 or not ins.parameters.tensors:
             bst = xgb.train(
                 self.params,
                 self.train_dmatrix,
                 num_boost_round=self.num_local_round,
                 evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
+                early_stopping_rounds=early_stopping_rounds,
                 verbose_eval=False,
                 callbacks=[verbose_callback],
             )
@@ -125,6 +133,7 @@ class XGBoostClient(Client):
                     num_boost_round=self.num_local_round,
                     evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
                     xgb_model=global_bst,
+                    early_stopping_rounds=early_stopping_rounds,
                     verbose_eval=False,
                     callbacks=[verbose_callback],
                 )
@@ -135,12 +144,19 @@ class XGBoostClient(Client):
                     self.train_dmatrix,
                     num_boost_round=self.num_local_round,
                     evals=[(self.valid_dmatrix, "validate"), (self.train_dmatrix, "train")],
+                    early_stopping_rounds=early_stopping_rounds,
                     verbose_eval=False,
                     callbacks=[verbose_callback],
                 )
 
+        # FASE 3: Log early stopping info
+        actual_iterations = bst.best_iteration + 1 if hasattr(bst, 'best_iteration') and bst.best_iteration is not None else self.num_local_round
+        saved_iterations = self.num_local_round - actual_iterations
+
         print(f"{'─'*80}")
         print(f"[Cliente {self.cid}] TREINAMENTO CONCLUÍDO - Round {global_round}")
+        if early_stopping_rounds and saved_iterations > 0:
+            print(f"  [EARLY STOPPING] Parou em {actual_iterations}/{self.num_local_round} iterações (economizou {saved_iterations})")
         print(f"{'─'*80}\n")
 
         if self.X_valid is not None and self.y_valid is not None:
