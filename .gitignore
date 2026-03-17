@@ -177,3 +177,18 @@ cython_debug/
 CLAUDE.md
 .claude/
 template/
+
+# Datasets grandes (CSVs do BAF)
+baf_data_&_code/datasets/
+dataset_fl/
+
+# Arquivos zip
+*.zip
+
+# Resultados de experimentos (regeneráveis)
+baf_data_&_code/experiments/
+baf_data_&_code/images/
+baf_data_&_code/catboost_info/
+
+# Logs
+logs/

@@ -1,0 +1,90 @@
+================================================================================
+CONFIGURACAO DO AMBIENTE VIRTUAL NO WSL
+Federated Learning - Bank Account Fraud Detection
+================================================================================
+
+IMPORTANTE: O ambiente virtual DEVE ser criado no filesystem Linux (~/) para
+evitar erros de I/O. O codigo pode ser acessado no filesystem Windows (/mnt/c/).
+
+================================================================================
+1. ABRIR O WSL
+================================================================================
+
+No terminal do Windows, execute:
+
+    wsl
+
+================================================================================
+2. CRIAR O AMBIENTE VIRTUAL (no filesystem Linux)
+================================================================================
+
+    cd ~
+    mkdir -p baf-fl-env
+    python3 -m venv ~/baf-fl-env/venv
+
+================================================================================
+3. ATIVAR O AMBIENTE VIRTUAL
+================================================================================
+
+    source ~/baf-fl-env/venv/bin/activate
+
+Para confirmar que esta ativado, verifique o prefixo (venv) no terminal.
+
+================================================================================
+4. ATUALIZAR PIP
+================================================================================
+
+    python -m pip install --upgrade pip
+
+================================================================================
+5. INSTALAR DEPENDENCIAS
+================================================================================
+
+    python -m pip install -r /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_\&_code/requirements.txt
+
+Caso o caminho com "&" cause problemas, copie o requirements.txt para o home:
+
+    cp "/mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/requirements.txt" ~/
+    python -m pip install -r ~/requirements.txt
+
+================================================================================
+6. EXECUTAR O PROJETO
+================================================================================
+
+Navegue ate a pasta do projeto e execute como modulo:
+
+
+Opcoes disponiveis:
+
+    # Usar dataset em caminho customizado
+    python -m baf_fl.main --data-path /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_\&_code/datasets/Base.csv
+
+    # Customizar numero de clientes e rounds
+    python -m baf_fl.main --num-clients 5 --num-rounds 10
+
+    # Customizar Optuna
+    python -m baf_fl.main --optuna-trials 20 --sample-fraction 0.5 --max-lr 0.03
+
+    # Ver todas as opcoes
+    python -m baf_fl.main --help
+
+================================================================================
+7. DESATIVAR O AMBIENTE VIRTUAL (quando terminar)
+================================================================================
+
+    deactivate
+
+================================================================================
+NOTAS
+================================================================================
+
+- Se encontrar erro "ModuleNotFoundError", certifique-se de que esta
+  executando a partir da pasta baf_data_&_code (pai de baf_fl/).
+
+- O dataset Base.csv deve estar em datasets/Base.csv (relativo a pasta
+  baf_data_&_code), ou especifique o caminho via --data-path.
+
+- Para reativar o ambiente em sessoes futuras:
+    source ~/baf-fl-env/venv/bin/activate
+
+================================================================================

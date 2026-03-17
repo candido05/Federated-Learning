@@ -1,0 +1,1330 @@
+================================================================================
+DIAGNÓSTICO CRÍTICO - FEDERATED LEARNING COM TREE-BASED MODELS
+Análise Senior: Problemas, Causas Raízes e Soluções Prioritárias
+Data: 21/12/2025
+================================================================================
+
+SUMÁRIO EXECUTIVO:
+------------------
+O sistema de FL está FUNCIONANDO, mas apresenta problemas SEVEROS de performance
+que impedem previsões corretas em classes minoritárias. Os modelos mostram viés
+extremo para a classe majoritária (Classe 1: 88% dos dados) e performance CRÍTICA
+nas classes minoritárias (Classe 0: 5%, Classe 2: 6%).
+
+MÉTRICAS ATUAIS (Rodada Final - XGBoost Cyclic):
+- Acurácia Global: 67.82% (ENGANOSA - dominada pela classe majoritária)
+- Balanced Accuracy: 66.78% (MÉTRICA REAL - mostra problema)
+- F1-Score Macro: 0.4979 (CRÍTICO - menos de 50%)
+- Recall Classe 0: 74.95%
+- Recall Classe 1: 68.18%
+- Recall Classe 2: 57.22% (CRÍTICO - mais de 42% de erro!)
+
+PROBLEMAS IDENTIFICADOS POR SEVERIDADE:
+========================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 CRÍTICO 1: DESBALANCEAMENTO EXTREMO DE CLASSES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINTOMA:
+--------
+Distribuição das classes no dataset:
+- Classe 0 (minoritária): 5% das amostras
+- Classe 1 (majoritária): 88% das amostras
+- Classe 2 (minoritária): 6% das amostras
+
+Razão de desbalanceamento: 1:17:1 (extremamente severa)
+
+IMPACTO:
+--------
+1. Modelos aprendem a SEMPRE prever Classe 1 (estratégia conservadora)
+2. Classes 0 e 2 são sistematicamente IGNORADAS durante treino
+3. Recall da Classe 2 nunca passa de 57% (42% de FALHA em detectar)
+4. F1-Score Macro estagnado em ~0.50 (performance aleatória)
+
+CAUSA RAIZ:
+-----------
+1. Balanceamento com OVERSAMPLE está sendo aplicado, MAS:
+   - Dados sintéticos não capturam complexidade real das classes minoritárias
+   - SMOTE/Oversample cria exemplos que podem estar no CENTRO da distribuição
+   - Tree-based models podem OVERFITAR nos dados sintéticos repetidos
+
+2. ERRO ARQUITETURAL CRÍTICO:
+   - Código força particionamento IID após balanceamento (linha 110 data_processing.py)
+   - Perde-se completamente o particionamento por veículo
+   - Veículos são divididos entre clientes, quebrando correlação temporal
+   - FL perde heterogeneidade real dos dados
+
+3. CLASS WEIGHTS NÃO ESTÃO SENDO APLICADOS CORRETAMENTE:
+   - Config tem use_class_weights=True (linha 47 main.py)
+   - MAS oversampling substitui necessidade de weights
+   - Estratégias estão CONFLITANDO entre si
+
+EVIDÊNCIA NOS LOGS:
+-------------------
+Round 1 XGBoost Cyclic:
+- Recall Classe 0: 73.18%
+- Recall Classe 1: 62.84%
+- Recall Classe 2: 50.84% (METADE da classe 2 é perdida!)
+
+Round 10 XGBoost Cyclic:
+- Recall Classe 0: 74.95% (melhora marginal: +1.77%)
+- Recall Classe 1: 68.18% (melhora: +5.34%)
+- Recall Classe 2: 57.22% (melhora: +6.38% - INSUFICIENTE!)
+
+CONCLUSÃO: Modelo melhora LENTAMENTE nas classes minoritárias (6% em 10 rodadas)
+mas NUNCA atinge performance aceitável (>80% recall).
+
+SOLUÇÃO PRIORITÁRIA:
+--------------------
+1. ELIMINAR OVERSAMPLE - Tree-based models NÃO se beneficiam de dados sintéticos
+   → Alterar balance_strategy de "oversample" para "weights" em main.py linha 44
+
+2. IMPLEMENTAR FOCAL LOSS ou CLASS WEIGHTS CORRETOS:
+   → XGBoost: scale_pos_weight calculado por classe
+   → LightGBM: class_weight='balanced'
+   → CatBoost: class_weights no construtor
+
+3. RESTAURAR PARTICIONAMENTO POR VEÍCULO:
+   → Remover linha 110 em data_processing.py que força IID
+   → Usar particionamento por veículo SEMPRE (mantém correlação temporal)
+   → Aplicar class weights DENTRO de cada cliente
+
+4. AUMENTAR RODADAS LOCAIS E GLOBAIS:
+   → num_local_boost_round: 10 → 50 (mais árvores = mais expressividade)
+   → num_server_rounds: 10 → 20 (mais iterações de agregação)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 CRÍTICO 2: CONVERGÊNCIA PREMATURA E ESTAGNAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINTOMA:
+--------
+Análise da evolução das métricas (XGBoost Cyclic):
+
+Round 1→5:  Balanced Acc: 62.29% → 65.79% (+3.50%)
+Round 5→10: Balanced Acc: 65.79% → 66.78% (+0.99%)
+
+F1-Score Macro:
+Round 1→5:  0.4481 → 0.4823 (+0.0342)
+Round 5→10: 0.4823 → 0.4979 (+0.0156)
+
+CONCLUSÃO: Convergência já aconteceu em Round 5-6. Rodadas 6-10 são DESPERDIÇADAS.
+
+IMPACTO:
+--------
+1. Modelo para de aprender após 5-6 rodadas
+2. Últimas 4-5 rodadas não agregam valor (desperdício computacional)
+3. Performance final é BAIXA porque convergiu cedo demais
+4. Indica que modelo está em LOCAL MINIMA ou UNDERFITTING
+
+CAUSA RAIZ:
+-----------
+1. LEARNING RATE MUITO ALTO (0.05):
+   - Modelo converge rápido demais
+   - Pula mínimos melhores
+   - Estabiliza em solução subótima
+
+2. POUCAS ÁRVORES POR RODADA LOCAL (10 boost rounds):
+   - Tree-based models precisam de 50-200 árvores para classes desbalanceadas
+   - 10 árvores = modelo MUITO simples
+   - Incapaz de capturar nuances das classes minoritárias
+
+3. PROFUNDIDADE LIMITADA (depth=4):
+   - Árvores rasas demais
+   - Não capturam interações complexas
+   - Classes minoritárias precisam de regras mais complexas
+
+4. EARLY STOPPING INEXISTENTE:
+   - Modelo continua treinando mesmo quando não melhora
+   - Não detecta estagnação automaticamente
+
+EVIDÊNCIA NOS LOGS:
+-------------------
+LightGBM Cyclic mostra problema PIOR:
+Round 1: Balanced Acc = 62.21%
+Round 2: Balanced Acc = 63.30% (PIORA TEMPORÁRIA - instabilidade!)
+Round 3: Balanced Acc = 64.97%
+Round 10: Balanced Acc = 67.25%
+
+Ganho Round 3→10: apenas 2.28% em 7 rodadas (0.3% por rodada)
+
+CatBoost Cyclic mostra UNDERFITTING SEVERO:
+Round 1: Balanced Acc = 56.94% (PIOR que todos)
+Round 10: Balanced Acc = 66.23%
+
+CatBoost está 0.55% PIOR que XGBoost na mesma configuração!
+
+SOLUÇÃO PRIORITÁRIA:
+--------------------
+1. REDUZIR LEARNING RATE:
+   → learning_rate: 0.05 → 0.01 (convergência mais lenta e estável)
+
+2. AUMENTAR ÁRVORES POR RODADA:
+   → num_local_boost_round: 10 → 50-100 (modelos mais expressivos)
+
+3. AUMENTAR PROFUNDIDADE DAS ÁRVORES:
+   → max_depth/depth: 4 → 6-8 (capturar interações complexas)
+   → min_data_in_leaf: 20 → 10 (permitir splits mais finos)
+
+4. IMPLEMENTAR EARLY STOPPING:
+   → Adicionar eval_metric + early_stopping_rounds=3
+   → Parar cliente se não melhorar em 3 rodadas consecutivas
+
+5. AUMENTAR RODADAS GLOBAIS:
+   → num_server_rounds: 10 → 20-30 (mais oportunidades de melhoria)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟡 IMPORTANTE 3: MATRIZ DE CONFUSÃO REVELA VIÉS SISTEMÁTICO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINTOMA:
+--------
+Matriz de Confusão Final (XGBoost Cyclic Round 10):
+
+                PREDITO
+              |  C0  |  C1  |  C2  |
+        ------+------+------+------+
+REAL    C0    | 1059 |  313 |   41 |  Total: 1413  (Recall: 74.95%)
+        C1    | 6618 |17475 | 1536 |  Total: 25629 (Recall: 68.18%)
+        C2    |   79 |  706 | 1050 |  Total: 1835  (Recall: 57.22%)
+
+ANÁLISE POR CLASSE:
+-------------------
+
+CLASSE 0 (minoritária - 5%):
+- Recall: 74.95% (BOM - detecta 3 em cada 4)
+- Erro tipo 1: 313 preditos como Classe 1 (22.15% - ERRO GRAVE)
+- Erro tipo 2: 41 preditos como Classe 2 (2.90%)
+
+CLASSE 1 (majoritária - 88%):
+- Recall: 68.18% (MEDIANO)
+- Erro tipo 1: 6618 preditos como Classe 0 (25.82% - MUITO ALTO!)
+- Erro tipo 2: 1536 preditos como Classe 2 (5.99%)
+
+CLASSE 2 (minoritária - 6%):
+- Recall: 57.22% (CRÍTICO - perde quase metade!)
+- Erro tipo 1: 79 preditos como Classe 0 (4.31%)
+- Erro tipo 2: 706 preditos como Classe 1 (38.47% - ERRO GRAVÍSSIMO!)
+
+PADRÃO IDENTIFICADO:
+--------------------
+Modelo tem FORTE VIÉS para Classe 1 (majoritária):
+- 25.82% da Classe 1 real é confundida com Classe 0
+- 38.47% da Classe 2 real é confundida com Classe 1
+- Classe 1 age como "classe padrão" quando modelo está incerto
+
+CAUSA RAIZ:
+-----------
+1. THRESHOLD DE DECISÃO NÃO CALIBRADO:
+   - Softmax probabilities não estão calibradas para classes desbalanceadas
+   - Threshold padrão (0.5 binário, max prob multi-classe) favorece majoritária
+
+2. FALTA DE CALIBRAÇÃO DE PROBABILIDADES:
+   - Tree-based models tendem a produzir probabilidades MAL CALIBRADAS
+   - Classes minoritárias têm probabilidades SUBESTIMADAS sistematicamente
+
+3. PERDA (LOSS) NÃO PONDERA ERROS POR CLASSE:
+   - softmax cross-entropy padrão trata todos erros igualmente
+   - Errar na Classe 2 (6%) deveria custar MAIS que errar na Classe 1 (88%)
+
+IMPACTO PRÁTICO:
+----------------
+Em aplicação real (detecção comportamento veículos):
+- 43% dos casos da Classe 2 serão PERDIDOS
+- Sistema será CONSERVADOR, tendendo sempre à Classe 1
+- Eventos raros (Classes 0 e 2) não serão detectados confiavelmente
+
+SOLUÇÃO PRIORITÁRIA:
+--------------------
+1. IMPLEMENTAR FOCAL LOSS:
+   → focal_loss = -(1-p_t)^γ * log(p_t)
+   → γ=2 penaliza exemplos fáceis (Classe 1)
+   → Força modelo a focar em exemplos difíceis (Classes 0 e 2)
+
+2. CALIBRAR THRESHOLDS POR CLASSE:
+   → Usar Platt Scaling ou Isotonic Regression
+   → Ajustar thresholds de decisão baseado em validação
+   → Threshold Classe 2 deve ser MAIS BAIXO (aceitar incerteza)
+
+3. ADICIONAR PENALIDADE ASSIMÉTRICA:
+   → Custo de erro Classe 2 = 17x custo erro Classe 1 (proporcional ao desbalanceamento)
+   → Implementar via sample_weights customizados
+
+4. POST-PROCESSING:
+   → Ensembling de múltiplos modelos com thresholds diferentes
+   → Voting ponderado favorecendo predições de classes minoritárias
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟡 IMPORTANTE 4: DIFERENÇA CYCLIC vs BAGGING MARGINAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINTOMA:
+--------
+Comparação XGBoost Round 10:
+
+CYCLIC:
+- Balanced Accuracy: 66.78%
+- F1-Score Macro: 0.4979
+- Recall C0: 74.95%, C1: 68.18%, C2: 57.22%
+- Tempo: 26.00s
+
+BAGGING:
+- Balanced Accuracy: 66.65%
+- F1-Score Macro: 0.5049
+- Recall C0: 72.97%, C1: 70.37%, C2: 56.62%
+- Tempo: 24.13s
+
+DIFERENÇA: Bagging tem F1 +0.0070 (1.4% melhor) mas Recall C2 pior!
+
+IMPACTO:
+--------
+1. Estratégia de agregação tem impacto MÍNIMO (< 2%)
+2. Problema NÃO está na agregação, está nos DADOS e HIPERPARÂMETROS
+3. Bagging é ligeiramente mais rápido (paralelo vs sequencial)
+4. NENHUMA estratégia resolve o problema das classes minoritárias
+
+CAUSA RAIZ:
+-----------
+1. AMBAS estratégias usam MESMOS hiperparâmetros ruins:
+   - Learning rate alto demais
+   - Poucas árvores
+   - Sem class weights corretos
+
+2. DADOS SÃO DESBALANCEADOS EM AMBOS:
+   - Oversample aplicado identicamente
+   - IID forçado igualmente
+   - Viés permanece
+
+3. AGREGAÇÃO NÃO COMPENSA MODELOS FRACOS LOCAIS:
+   - Se todos clientes têm modelos ruins, agregação não melhora
+   - "Garbage in, garbage out" federado
+
+EVIDÊNCIA NOS LOGS:
+-------------------
+LightGBM também mostra diferença marginal:
+
+CYCLIC Round 10:
+- Balanced Acc: 67.25%
+- F1 Macro: 0.4984
+
+BAGGING Round 10:
+- Balanced Acc: 66.15%
+- F1 Macro: 0.4988
+
+Diferença: CYCLIC é 1.1% MELHOR em Balanced Acc, mas F1 EMPATA!
+
+CatBoost:
+CYCLIC Round 10: Balanced Acc: 66.23%
+BAGGING Round 10: Balanced Acc: 66.57%
+
+Diferença: BAGGING é 0.34% melhor (MARGINAL)
+
+CONCLUSÃO: Estratégia de agregação é IRRELEVANTE com hiperparâmetros ruins.
+
+SOLUÇÃO PRIORITÁRIA:
+--------------------
+1. FOCAR EM MELHORAR MODELOS LOCAIS PRIMEIRO:
+   → Não perder tempo comparando Cyclic vs Bagging
+   → Corrigir desbalanceamento ANTES de comparar estratégias
+
+2. TESTAR NOVAS ESTRATÉGIAS DE AGREGAÇÃO:
+   → Diversity-weighted aggregation (já implementado, não ativado!)
+   → Usar diversity_aggregation=True em main.py
+   → Ponderar por entropia de classes locais
+
+3. IMPLEMENTAR CLIENT SELECTION:
+   → Não treinar todos clientes toda rodada
+   → Selecionar clientes com mais diversidade de classes
+   → Prioritizar clientes com Classes 0 e 2
+
+4. USAR CURRICULUM LEARNING:
+   → Já implementado (use_curriculum=True)
+   → Começar com clientes "fáceis" (baixa entropia)
+   → Gradualmente adicionar clientes "difíceis"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟡 IMPORTANTE 5: CATBOOST PERFORMANCE INFERIOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINTOMA:
+--------
+Comparação Round 10 Cyclic:
+
+XGBoost:  Balanced Acc = 66.78%, F1 = 0.4979
+LightGBM: Balanced Acc = 67.25%, F1 = 0.4984 (MELHOR!)
+CatBoost: Balanced Acc = 66.23%, F1 = 0.4831 (PIOR!)
+
+CatBoost está:
+- 0.55% pior que XGBoost
+- 1.02% pior que LightGBM
+- F1 1.53% pior que LightGBM
+
+IMPACTO:
+--------
+1. CatBoost deveria ser MELHOR em classes desbalanceadas (design original)
+2. Performance inferior indica HIPERPARÂMETROS INADEQUADOS
+3. CatBoost tem 10+ hiperparâmetros específicos não explorados
+
+CAUSA RAIZ:
+-----------
+1. BOOTSTRAP TYPE ERRADO:
+   - Usando Bernoulli bootstrap (linha 431 fl_advanced.py)
+   - CatBoost funciona melhor com MVS ou Bayesian para classes desbalanceadas
+
+2. BORDER_COUNT BAIXO (32):
+   - CatBoost usa histogramas para splits
+   - 32 bins pode ser INSUFICIENTE para classes minoritárias
+   - Recomendado: 128-254 para classes desbalanceadas
+
+3. LEARNING RATE UNIFORME:
+   - CatBoost se beneficia de learning rate MAIS BAIXO (0.01-0.03)
+   - Usando 0.05 (igual XGBoost/LightGBM) = subótimo
+
+4. AUSÊNCIA DE AUTO CLASS WEIGHTS:
+   - CatBoost tem parâmetro auto_class_weights
+   - NÃO está sendo usado! (seria solução automática)
+
+5. DEPTH MUITO BAIXO (4):
+   - CatBoost funciona bem com árvores PROFUNDAS (6-10)
+   - Symmetric trees precisam de depth maior
+
+EVIDÊNCIA NOS LOGS:
+-------------------
+CatBoost Round 1:
+- Balanced Acc: 56.94% (MUITO pior que XGBoost: 62.29%)
+- Recall C1: 45.22% (CRÍTICO - não detecta nem metade da classe majoritária!)
+- Recall C2: 50.52%
+
+CatBoost começa MUITO pior e converge mais lento.
+
+SOLUÇÃO PRIORITÁRIA:
+--------------------
+1. ADICIONAR AUTO_CLASS_WEIGHTS:
+   → Adicionar 'auto_class_weights': 'Balanced' nos params CatBoost
+   → Catboost calcula automaticamente os pesos
+
+2. AUMENTAR BORDER_COUNT:
+   → border_count: 32 → 128 (mais granularidade nos splits)
+
+3. REDUZIR LEARNING RATE:
+   → learning_rate: 0.05 → 0.03 (CatBoost precisa de convergência lenta)
+
+4. AUMENTAR DEPTH:
+   → depth: 4 → 6 (árvores mais expressivas)
+
+5. TESTAR BOOTSTRAP TYPES:
+   → Testar MVS bootstrap (Minimal Variance Sampling)
+   → Testar Bayesian bootstrap
+   → Comparar com Bernoulli atual
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟢 MENOR PRIORIDADE 6: CÓDIGO E ARQUITETURA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLEMAS ENCONTRADOS:
+----------------------
+
+1. CONFLITO DE ESTRATÉGIAS (main.py linha 44-56):
+   - balance_strategy="oversample" + use_class_weights=True
+   - Usar AMBOS é redundante e contraproducente
+   - Oversample + weights = double counting
+
+2. FEATURES AVANÇADAS NÃO USADAS (main.py):
+   - diversity_aggregation=True MAS alpha=0.5 (pouco impacto)
+   - use_curriculum=True MAS warmup=5 (metade das rodadas!)
+   - use_entropy_cycling=True (impacto não validado)
+
+3. NÚMERO DE CLIENTES MUITO BAIXO (3):
+   - FL se beneficia de 10-100 clientes
+   - 3 clientes = quase centralizado
+   - Heterogeneidade real só aparece com mais clientes
+
+4. AMOSTRAS POR CLIENTE ENORMES (102k):
+   - Com 3 clientes, cada um tem 102 mil amostras
+   - Não é "federated" learning real
+   - Deveria ter 10-30 clientes com 10-30k amostras cada
+
+5. LOGS EXCESSIVOS:
+   - Imprimindo métricas detalhadas a cada rodada
+   - Poluição de terminal
+   - Dificulta identificar problemas
+
+SOLUÇÃO:
+--------
+1. ESCOLHER UMA ESTRATÉGIA:
+   - RECOMENDADO: balance_strategy="weights" (não modifica dados)
+   - REMOVER: use_sample_weights=False (redundante)
+
+2. ATIVAR FEATURES CORRETAMENTE:
+   - diversity_alpha: 0.5 → 0.8 (mais peso na diversidade)
+   - curriculum_warmup: 5 → 3 (começar curriculum antes)
+
+3. AUMENTAR NÚMERO DE CLIENTES:
+   - num_clients: 3 → 10 (mais realista)
+   - vehicles_per_client: 40 → 15 (menos dados por cliente)
+
+4. SIMPLIFICAR LOGS:
+   - Remover prints intermediários
+   - Manter apenas métricas finais
+   - Logs detalhados só em arquivo
+
+
+================================================================================
+PLANO DE AÇÃO PRIORITIZADO
+================================================================================
+
+🔥 URGENTE (Implementar AGORA - Impacto > 10%):
+------------------------------------------------
+
+1. [CRÍTICO] MUDAR ESTRATÉGIA DE BALANCEAMENTO:
+   Arquivo: main.py linha 44
+   Antes: "balance_strategy": "oversample"
+   Depois: "balance_strategy": "weights"
+
+   Impacto esperado: +5-10% em Recall Classes 0 e 2
+
+2. [CRÍTICO] AUMENTAR ÁRVORES LOCAIS:
+   Arquivo: main.py linha 40
+   Antes: "num_local_boost_round": 10
+   Depois: "num_local_boost_round": 50
+
+   Impacto esperado: +3-7% em F1-Score Macro
+
+3. [CRÍTICO] REDUZIR LEARNING RATE:
+   Arquivo: common/fl_advanced.py linhas 405, 417, 429
+   XGBoost: 0.05 → 0.01
+   LightGBM: 0.05 → 0.01
+   CatBoost: 0.05 → 0.03
+
+   Impacto esperado: +2-5% em Balanced Accuracy
+
+4. [CRÍTICO] AUMENTAR RODADAS GLOBAIS:
+   Arquivo: main.py linha 39
+   Antes: "num_server_rounds": 10
+   Depois: "num_server_rounds": 20
+
+   Impacto esperado: +2-4% em métricas finais
+
+
+📊 IMPORTANTE (Implementar esta semana - Impacto 5-10%):
+---------------------------------------------------------
+
+5. [IMPORTANTE] ADICIONAR AUTO_CLASS_WEIGHTS CATBOOST:
+   Arquivo: common/fl_advanced.py linha 431
+   Adicionar: 'auto_class_weights': 'Balanced'
+
+   Impacto esperado: CatBoost alcança LightGBM (+1-2%)
+
+6. [IMPORTANTE] AUMENTAR DEPTH DAS ÁRVORES:
+   Arquivo: common/fl_advanced.py
+   XGBoost max_depth: 4 → 6
+   LightGBM max_depth: 4 → 6
+   CatBoost depth: 4 → 6
+
+   Impacto esperado: +1-3% em F1-Score
+
+7. [IMPORTANTE] RESTAURAR PARTICIONAMENTO POR VEÍCULO:
+   Arquivo: common/data_processing.py linha 110
+   Remover: return self._partition_iid(...)
+   Substituir por: continue com particionamento por veículo
+
+   Impacto esperado: +2-5% em generalização real
+
+8. [IMPORTANTE] AUMENTAR NÚMERO DE CLIENTES:
+   Arquivo: main.py linha 38
+   Antes: "num_clients": 3
+   Depois: "num_clients": 10
+
+   Impacto esperado: FL mais realista, +1-3% generalização
+
+
+🔧 MELHORIAS (Implementar depois - Impacto < 5%):
+--------------------------------------------------
+
+9. Implementar early stopping local
+10. Calibrar thresholds de decisão pós-treino
+11. Implementar focal loss customizado
+12. Adicionar ensembling de múltiplos runs
+13. Tunning de hiperparâmetros com Optuna
+14. Adicionar mais features ao dataset
+
+
+================================================================================
+EXPERIMENTOS RECOMENDADOS (Ordem de Execução)
+================================================================================
+
+EXPERIMENTO 1: BASELINE CORRIGIDO
+----------------------------------
+Mudanças:
+- balance_strategy="weights"
+- num_local_boost_round=50
+- learning_rate=0.01 (todos)
+- num_server_rounds=20
+
+Métrica alvo:
+- F1-Score Macro > 0.60 (vs 0.50 atual)
+- Recall Classe 2 > 70% (vs 57% atual)
+
+EXPERIMENTO 2: CATBOOST OTIMIZADO
+----------------------------------
+Mudanças adicionais:
+- auto_class_weights='Balanced'
+- depth=6
+- border_count=128
+- bootstrap_type='MVS'
+
+Métrica alvo:
+- CatBoost = LightGBM performance
+
+EXPERIMENTO 3: DEEP TREES
+--------------------------
+Mudanças adicionais:
+- max_depth/depth=8
+- num_local_boost_round=100
+- min_data_in_leaf=5
+
+Métrica alvo:
+- F1-Score Macro > 0.65
+- Recall todas classes > 75%
+
+EXPERIMENTO 4: FULL FL (10 clientes)
+-------------------------------------
+Mudanças adicionais:
+- num_clients=10
+- vehicles_per_client=15
+- diversity_aggregation=True
+- diversity_alpha=0.8
+
+Métrica alvo:
+- Validar que FL funciona em escala real
+
+
+================================================================================
+MÉTRICAS DE SUCESSO
+================================================================================
+
+MÍNIMO ACEITÁVEL (TCC):
+-----------------------
+✓ Balanced Accuracy > 75%
+✓ F1-Score Macro > 0.65
+✓ Recall TODAS classes > 70%
+✓ Diferença max recall entre classes < 15%
+
+OBJETIVO IDEAL (Publicação):
+-----------------------------
+✓ Balanced Accuracy > 80%
+✓ F1-Score Macro > 0.75
+✓ Recall TODAS classes > 80%
+✓ Diferença max recall entre classes < 10%
+
+
+================================================================================
+CONCLUSÃO FINAL
+================================================================================
+
+O sistema está TECNICAMENTE FUNCIONAL mas com PERFORMANCE INADEQUADA devido a:
+
+1. Estratégia de balanceamento ERRADA (oversample vs weights)
+2. Hiperparâmetros SUBÓTIMOS (poucos rounds, LR alto, árvores rasas)
+3. Convergência PREMATURA (estagna em Round 5-6)
+4. Viés EXTREMO para classe majoritária (42% erro em Classe 2)
+
+NENHUM problema é ARQUITETURAL (código FL está correto).
+TODOS problemas são de CONFIGURAÇÃO e HIPERPARÂMETROS.
+
+Com as mudanças propostas (Experimento 1), espera-se:
+- F1-Score Macro: 0.50 → 0.60-0.65 (+20-30% relativo)
+- Recall Classe 2: 57% → 70-75% (+23-32% absoluto)
+- Balanced Accuracy: 67% → 75-78% (+12-16% absoluto)
+
+PRIORIDADE MÁXIMA:
+Implementar Experimento 1 COMPLETO antes de qualquer outra mudança.
+
+================================================================================
+
+
+████████████████████████████████████████████████████████████████████████████████
+████████████████████████████████████████████████████████████████████████████████
+██                                                                            ██
+██                         TODO LIST ESTRUTURADA                             ██
+██                    Implementação Ordenada por Prioridade                  ██
+██                                                                            ██
+████████████████████████████████████████████████████████████████████████████████
+████████████████████████████████████████████████████████████████████████████████
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                            ┃
+┃  🔥 FASE 1: CORREÇÕES CRÍTICAS (URGENTE)                                  ┃
+┃  Tempo estimado: 30-45 minutos                                            ┃
+┃  Impacto esperado: +10-15% nas métricas                                   ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.1: MUDAR ESTRATÉGIA DE BALANCEAMENTO                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linha: 44                                                                  │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "balance_strategy": "oversample",                                        │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   "balance_strategy": "weights",                                           │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Tree-based models NÃO se beneficiam de dados sintéticos (SMOTE/Over)    │
+│ - Class weights funcionam melhor com XGBoost/LightGBM/CatBoost            │
+│ - Evita forçar particionamento IID (mantém agrupamento por veículo)       │
+│ - Elimina risco de overfitting em dados sintéticos                        │
+│                                                                            │
+│ IMPACTO ESPERADO: +5-8% Recall Classes 0 e 2                              │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.2: REMOVER CONFLITO DE ESTRATÉGIAS                              │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linha: 49                                                                  │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "use_sample_weights": False,                                             │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   # Remover linha completamente (redundante com balance_strategy)         │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - balance_strategy="weights" já ativa class weights automaticamente       │
+│ - Ter use_sample_weights=False gera confusão e conflito                   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.3: AUMENTAR ÁRVORES LOCAIS (CRÍTICO!)                           │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linha: 40                                                                  │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "num_local_boost_round": 10,                                             │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   "num_local_boost_round": 50,                                             │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - 10 árvores = modelo MUITO simples para 3 classes desbalanceadas         │
+│ - Benchmarks recomendam 50-200 árvores para classes minoritárias          │
+│ - Modelos atuais convergem prematuramente por falta de expressividade     │
+│                                                                            │
+│ IMPACTO ESPERADO: +3-7% F1-Score Macro, +5-10% Recall Classe 2            │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.4: AUMENTAR RODADAS GLOBAIS                                     │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linha: 39                                                                  │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "num_server_rounds": 10,                                                 │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   "num_server_rounds": 20,                                                 │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Modelo converge em Round 5-6 mas estagna em solução subótima            │
+│ - 20 rodadas permite convergência mais completa                           │
+│ - Com LR reduzido (TODO 1.5), precisa de mais iterações                   │
+│                                                                            │
+│ IMPACTO ESPERADO: +2-4% em métricas finais                                │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.5: REDUZIR LEARNING RATE (TODOS ALGORITMOS)                     │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│                                                                            │
+│ MUDANÇA 1 - XGBoost (linha ~405):                                         │
+│   ANTES:  'learning_rate': 0.05,                                           │
+│   DEPOIS: 'learning_rate': 0.01,                                           │
+│                                                                            │
+│ MUDANÇA 2 - LightGBM (linha ~417):                                        │
+│   ANTES:  'learning_rate': 0.05,                                           │
+│   DEPOIS: 'learning_rate': 0.01,                                           │
+│                                                                            │
+│ MUDANÇA 3 - CatBoost (linha ~429):                                        │
+│   ANTES:  'learning_rate': 0.05,                                           │
+│   DEPOIS: 'learning_rate': 0.03,                                           │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - LR=0.05 causa convergência prematura (estagna em Round 5-6)             │
+│ - Classes desbalanceadas precisam convergência LENTA                      │
+│ - CatBoost historicamente funciona melhor com LR um pouco maior           │
+│                                                                            │
+│ IMPACTO ESPERADO: +2-5% Balanced Accuracy, convergência mais estável      │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.6: LIMPAR CACHE PYTHON (.pyc)                                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Comando (WSL/Linux):                                                       │
+│   cd Code/tcc_code                                                         │
+│   find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null        │
+│   find . -name "*.pyc" -delete 2>/dev/null                                │
+│                                                                            │
+│ Comando (Windows PowerShell):                                             │
+│   cd Code\tcc_code                                                         │
+│   Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -R  │
+│   Get-ChildItem -Recurse -Filter *.pyc | Remove-Item                      │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Evitar que configs antigas em cache sejam usadas                        │
+│ - Garantir que mudanças sejam aplicadas                                   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 1.7: EXECUTAR EXPERIMENTO 1 (BASELINE CORRIGIDO)                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Comando:                                                                   │
+│   python main.py --algorithm all --strategy both                          │
+│                                                                            │
+│ VALIDAÇÃO:                                                                 │
+│ Verificar nos logs:                                                        │
+│   ✓ balance_strategy sendo aplicado como "weights"                        │
+│   ✓ num_local_boost_round = 50 (não 10)                                   │
+│   ✓ num_server_rounds = 20 (não 10)                                       │
+│   ✓ Rodadas TODAS executando (não parar em 10)                            │
+│                                                                            │
+│ MÉTRICAS ALVO (Round Final):                                              │
+│   ✓ F1-Score Macro > 0.60 (baseline: 0.50)                                │
+│   ✓ Recall Classe 2 > 65% (baseline: 57%)                                 │
+│   ✓ Balanced Accuracy > 70% (baseline: 67%)                               │
+│                                                                            │
+│ SE MÉTRICAS ATINGIDAS: Prosseguir para FASE 2                             │
+│ SE NÃO: Revisar implementação de class_weights no código                  │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                            ┃
+┃  📊 FASE 2: OTIMIZAÇÕES IMPORTANTES                                       ┃
+┃  Tempo estimado: 1-2 horas                                                ┃
+┃  Impacto esperado: +5-10% nas métricas                                    ┃
+┃  INICIAR SOMENTE APÓS FASE 1 COMPLETA E VALIDADA                          ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.1: ADICIONAR AUTO_CLASS_WEIGHTS NO CATBOOST                     │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│ Linha: ~428 (dentro do elif algorithm == 'catboost')                      │
+│                                                                            │
+│ ADICIONAR depois de 'learning_rate':                                       │
+│   'auto_class_weights': 'Balanced',                                        │
+│                                                                            │
+│ CÓDIGO COMPLETO:                                                           │
+│   elif algorithm == 'catboost':                                            │
+│       return {                                                             │
+│           'depth': 4,                                                      │
+│           'learning_rate': 0.03,                                           │
+│           'auto_class_weights': 'Balanced',  # <-- NOVA LINHA             │
+│           'min_data_in_leaf': 20,                                          │
+│           'bootstrap_type': 'Bernoulli',                                   │
+│           'subsample': 0.8,                                                │
+│           ...                                                              │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - CatBoost tem suporte NATIVO para auto_class_weights                     │
+│ - Calcula automaticamente pesos balanceados                               │
+│ - CatBoost está 1% PIOR que LightGBM, isso deve igualar                   │
+│                                                                            │
+│ IMPACTO ESPERADO: CatBoost +1-2% (alcançar LightGBM)                      │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.2: AUMENTAR PROFUNDIDADE DAS ÁRVORES                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│                                                                            │
+│ MUDANÇA 1 - XGBoost (linha ~404):                                         │
+│   ANTES:  'max_depth': 4,                                                  │
+│   DEPOIS: 'max_depth': 6,                                                  │
+│                                                                            │
+│ MUDANÇA 2 - LightGBM (linha ~416):                                        │
+│   ANTES:  'max_depth': 4,                                                  │
+│   DEPOIS: 'max_depth': 6,                                                  │
+│                                                                            │
+│ MUDANÇA 3 - CatBoost (linha ~428):                                        │
+│   ANTES:  'depth': 4,                                                      │
+│   DEPOIS: 'depth': 6,                                                      │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Árvores profundidade 4 = muito rasas para 22 features                   │
+│ - Classes minoritárias precisam regras mais complexas                     │
+│ - Depth 6 é sweet spot (não overfita, não underfita)                      │
+│                                                                            │
+│ IMPACTO ESPERADO: +1-3% F1-Score                                          │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.3: AUMENTAR BORDER_COUNT NO CATBOOST                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│ Linha: ~435 (dentro de CatBoost params)                                   │
+│                                                                            │
+│ VERIFICAR SE EXISTE border_count, se não, ADICIONAR:                       │
+│   'border_count': 128,  # era 32 ou ausente                               │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - CatBoost usa histogramas para encontrar splits                          │
+│ - 32 bins = granularidade BAIXA para classes desbalanceadas               │
+│ - 128-254 bins = recomendado para alta precisão                           │
+│                                                                            │
+│ IMPACTO ESPERADO: CatBoost +0.5-1% precisão nos splits                    │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.4: REDUZIR MIN_DATA_IN_LEAF                                     │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│                                                                            │
+│ MUDANÇA 1 - LightGBM (linha ~418):                                        │
+│   ANTES:  'min_data_in_leaf': 20,                                          │
+│   DEPOIS: 'min_data_in_leaf': 10,                                          │
+│                                                                            │
+│ MUDANÇA 2 - CatBoost (linha ~430):                                        │
+│   ANTES:  'min_data_in_leaf': 20,                                          │
+│   DEPOIS: 'min_data_in_leaf': 10,                                          │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Classes minoritárias têm POUCAS amostras                                │
+│ - min_data_in_leaf=20 impede splits finos nessas classes                  │
+│ - min_data_in_leaf=10 permite mais granularidade SEM overfitting          │
+│                                                                            │
+│ IMPACTO ESPERADO: +0.5-2% Recall classes minoritárias                     │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.5: AUMENTAR NÚMERO DE CLIENTES (FL REAL)                        │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linhas: 38, 43                                                             │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "num_clients": 3,                                                        │
+│   "vehicles_per_client": 40,                                               │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   "num_clients": 10,                                                       │
+│   "vehicles_per_client": 15,                                               │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - 3 clientes com 102k amostras cada = quase centralizado                  │
+│ - FL real precisa de 10-100 clientes com dados heterogêneos               │
+│ - Heterogeneidade real só aparece com mais clientes                       │
+│                                                                            │
+│ NOTA: Fazer DEPOIS de validar que Fase 1 + 2.1-2.4 funcionam!             │
+│                                                                            │
+│ IMPACTO ESPERADO: +1-3% generalização, FL mais realista                   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.6: ATIVAR DIVERSITY AGGREGATION                                 │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/main.py                                            │
+│ Linhas: 51-52                                                              │
+│                                                                            │
+│ ANTES:                                                                     │
+│   "diversity_aggregation": True,                                           │
+│   "diversity_alpha": 0.5,                                                  │
+│                                                                            │
+│ DEPOIS:                                                                    │
+│   "diversity_aggregation": True,                                           │
+│   "diversity_alpha": 0.8,                                                  │
+│                                                                            │
+│ JUSTIFICATIVA:                                                             │
+│ - Alpha=0.5 = pouco peso na diversidade de classes                        │
+│ - Alpha=0.8 = prioriza clientes com classes minoritárias                  │
+│ - Já implementado, só precisa de ajuste fino                              │
+│                                                                            │
+│ IMPACTO ESPERADO: +0.5-1.5% em agregação ponderada                        │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 2.7: EXECUTAR EXPERIMENTO 2 (CATBOOST OTIMIZADO)                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Comando:                                                                   │
+│   python main.py --algorithm catboost --strategy both                     │
+│                                                                            │
+│ MÉTRICAS ALVO:                                                             │
+│   ✓ CatBoost Balanced Acc ≈ LightGBM (diferença < 0.5%)                   │
+│   ✓ F1-Score Macro > 0.62                                                 │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                            ┃
+┃  🔧 FASE 3: MELHORIAS AVANÇADAS (OPCIONAL)                                ┃
+┃  Tempo estimado: 2-4 horas                                                ┃
+┃  Impacto esperado: +3-7% nas métricas                                     ┃
+┃  INICIAR SOMENTE SE FASE 2 ATINGIU > 70% Balanced Accuracy                ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 3.1: IMPLEMENTAR EARLY STOPPING LOCAL                             │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivos a modificar:                                                      │
+│   - algorithms/xgboost/client.py                                           │
+│   - algorithms/lightgbm/client.py                                          │
+│   - algorithms/catboost/client.py                                          │
+│                                                                            │
+│ IMPLEMENTAÇÃO:                                                             │
+│ 1. Adicionar eval_set no fit() de cada algoritmo                          │
+│ 2. Adicionar early_stopping_rounds=5 nos params                           │
+│ 3. Logar número de árvores realmente usadas                               │
+│                                                                            │
+│ EXEMPLO XGBoost:                                                           │
+│   xgb.train(params, dtrain,                                                │
+│             num_boost_round=num_local_round,                               │
+│             evals=[(dvalid, 'valid')],                                     │
+│             early_stopping_rounds=5,                                       │
+│             verbose_eval=False)                                            │
+│                                                                            │
+│ IMPACTO ESPERADO: -10-20% tempo treino, evita overfitting                 │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 3.2: IMPLEMENTAR FOCAL LOSS (AVANÇADO)                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Criar arquivo: Code/tcc_code/common/custom_losses.py                      │
+│                                                                            │
+│ IMPLEMENTAR:                                                               │
+│ 1. FocalLoss para XGBoost (custom objective)                              │
+│ 2. FocalLoss para LightGBM (custom objective)                             │
+│ 3. Focal loss via sample_weights para CatBoost                            │
+│                                                                            │
+│ INTEGRAR em:                                                               │
+│   - algorithms/*/client.py (passar obj='focal' nos params)                │
+│                                                                            │
+│ NOTA: Requer conhecimento profundo de gradientes customizados             │
+│                                                                            │
+│ IMPACTO ESPERADO: +3-5% Recall classes minoritárias                       │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 3.3: CALIBRAR THRESHOLDS DE DECISÃO                               │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Criar arquivo: Code/tcc_code/common/calibration.py                        │
+│                                                                            │
+│ IMPLEMENTAR:                                                               │
+│ 1. Platt Scaling para calibração de probabilidades                        │
+│ 2. Isotonic Regression como alternativa                                   │
+│ 3. Busca de threshold ótimo por classe (maximize F1)                      │
+│                                                                            │
+│ APLICAR:                                                                   │
+│ - Após agregação global no servidor                                       │
+│ - Antes de calcular métricas finais                                       │
+│                                                                            │
+│ IMPACTO ESPERADO: +2-4% F1-Score via thresholds customizados              │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 3.4: DEEP TREES EXPERIMENT                                        │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: Code/tcc_code/common/fl_advanced.py                              │
+│                                                                            │
+│ MUDANÇAS (TODOS algoritmos):                                              │
+│   max_depth/depth: 6 → 8                                                   │
+│   num_local_boost_round: 50 → 100                                          │
+│   min_data_in_leaf: 10 → 5                                                 │
+│                                                                            │
+│ CUIDADO:                                                                   │
+│ - Risco de overfitting aumenta                                            │
+│ - Monitorar gap treino vs validação                                       │
+│ - Usar early stopping (TODO 3.1) é ESSENCIAL                              │
+│                                                                            │
+│ MÉTRICAS ALVO:                                                             │
+│   ✓ F1-Score Macro > 0.70                                                 │
+│   ✓ Recall todas classes > 75%                                            │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 3.5: HYPERPARAMETER TUNING COM OPTUNA                             │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Criar arquivo: Code/tcc_code/tuning/optuna_search.py                      │
+│                                                                            │
+│ IMPLEMENTAR:                                                               │
+│ 1. Define search space para cada algoritmo:                               │
+│    - learning_rate: [0.001, 0.1] (log-uniform)                            │
+│    - max_depth: [4, 10]                                                    │
+│    - num_local_boost_round: [30, 150]                                     │
+│    - min_data_in_leaf: [5, 50]                                            │
+│    - subsample: [0.6, 1.0]                                                 │
+│                                                                            │
+│ 2. Objective function = maximize Balanced Accuracy                        │
+│                                                                            │
+│ 3. Run 50-100 trials                                                       │
+│                                                                            │
+│ EXECUTAR:                                                                  │
+│   python tuning/optuna_search.py --algorithm xgboost                      │
+│                                                                            │
+│ IMPACTO ESPERADO: +2-5% encontrando hiperparâmetros ótimos                │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                            ┃
+┃  📈 FASE 4: VALIDAÇÃO FINAL E DOCUMENTAÇÃO                                ┃
+┃  Tempo estimado: 1-2 horas                                                ┃
+┃  EXECUTAR APÓS ALCANÇAR MÉTRICAS ALVO                                     ┃
+┃                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 4.1: EXECUTAR BATERIA COMPLETA DE TESTES                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Comando:                                                                   │
+│   python main.py --algorithm all --strategy both                          │
+│                                                                            │
+│ VALIDAÇÕES:                                                                │
+│ ✓ Todos 6 experimentos completam sem erros                                │
+│ ✓ Métricas salvas corretamente em logs/                                   │
+│ ✓ Plots gerados em plots/                                                 │
+│ ✓ Tempos de execução razoáveis (< 5min por experimento)                   │
+│                                                                            │
+│ VERIFICAR CONSISTÊNCIA:                                                    │
+│ - Rodar 3x e verificar variância < 2% nas métricas                        │
+│ - Seed=42 deve dar resultados reproduzíveis                               │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 4.2: GERAR PLOTS COMPARATIVOS FINAIS                              │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Comando:                                                                   │
+│   cd plot_generation                                                       │
+│   python plot_metrics.py                                                   │
+│                                                                            │
+│ VERIFICAR:                                                                 │
+│ ✓ Plots individuais em plots/{algorithm}/{strategy}/{timestamp}/          │
+│ ✓ Plots comparativos em plots/comparisons/{timestamp}/                    │
+│ ✓ Todos 9 plots gerados (6 individuais + 3 comparativos)                  │
+│                                                                            │
+│ ANALISAR VISUALMENTE:                                                      │
+│ - Convergência suave (sem oscilações bruscas)                             │
+│ - Classes minoritárias melhorando ao longo das rodadas                    │
+│ - Gap treino-validação aceitável                                          │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 4.3: CRIAR TABELA COMPARATIVA DE RESULTADOS                       │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Criar arquivo: Code/tcc_code/RESULTADOS_FINAIS.md                         │
+│                                                                            │
+│ INCLUIR:                                                                   │
+│ 1. Tabela com métricas finais de TODOS experimentos:                      │
+│    - Balanced Accuracy                                                     │
+│    - F1-Score Macro                                                        │
+│    - Recall por classe (0, 1, 2)                                           │
+│    - AUC                                                                   │
+│    - Tempo de execução                                                     │
+│                                                                            │
+│ 2. Comparação ANTES vs DEPOIS das otimizações                             │
+│                                                                            │
+│ 3. Melhor configuração encontrada                                         │
+│                                                                            │
+│ 4. Análise de trade-offs (performance vs tempo)                           │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 4.4: ATUALIZAR CLAUDE.md COM RESULTADOS                           │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Arquivo: CLAUDE.md                                                         │
+│                                                                            │
+│ ADICIONAR SEÇÃO:                                                           │
+│ ## Resultados Experimentais                                               │
+│                                                                            │
+│ ### Configuração Final Otimizada                                          │
+│ - balance_strategy: weights                                               │
+│ - num_local_boost_round: 50                                               │
+│ - num_server_rounds: 20                                                   │
+│ - learning_rate: 0.01 (XGB/LGBM), 0.03 (CatBoost)                         │
+│ - max_depth: 6                                                             │
+│ - num_clients: 10                                                          │
+│                                                                            │
+│ ### Métricas Alcançadas                                                   │
+│ [Copiar tabela do TODO 4.3]                                               │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ✅ TODO 4.5: PREPARAR APRESENTAÇÃO DE RESULTADOS (TCC)                    │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Criar: doc/apresentacao_resultados.md                                     │
+│                                                                            │
+│ ESTRUTURA:                                                                 │
+│ 1. Problema identificado (classes desbalanceadas)                         │
+│ 2. Soluções implementadas (weights, hiperparâmetros, etc)                 │
+│ 3. Resultados obtidos (tabelas + gráficos)                                │
+│ 4. Análise comparativa (Cyclic vs Bagging)                                │
+│ 5. Conclusões e trabalhos futuros                                         │
+│                                                                            │
+│ GRÁFICOS ESSENCIAIS:                                                       │
+│ - Evolução das métricas por rodada                                        │
+│ - Comparação entre algoritmos                                             │
+│ - Matrizes de confusão                                                     │
+│ - Recall por classe (mostrar melhoria)                                    │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+████████████████████████████████████████████████████████████████████████████████
+                         CHECKLIST DE VALIDAÇÃO FINAL
+████████████████████████████████████████████████████████████████████████████████
+
+MÉTRICAS MÍNIMAS ACEITÁVEIS (TCC):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+☐ Balanced Accuracy > 75%
+☐ F1-Score Macro > 0.65
+☐ Recall Classe 0 > 70%
+☐ Recall Classe 1 > 70%
+☐ Recall Classe 2 > 70%
+☐ Diferença max recall entre classes < 15%
+☐ AUC > 0.85
+
+VALIDAÇÕES TÉCNICAS:
+━━━━━━━━━━━━━━━━━━━
+☐ Código executa sem erros
+☐ Logs salvos corretamente
+☐ Plots gerados automaticamente
+☐ Resultados reproduzíveis (seed fixo)
+☐ Tempo total < 30min para all+both
+☐ Não há warnings críticos
+
+DOCUMENTAÇÃO:
+━━━━━━━━━━━━━
+☐ CLAUDE.md atualizado
+☐ RESULTADOS_FINAIS.md criado
+☐ Comentários críticos no código
+☐ README com instruções de execução
+☐ Apresentação de resultados preparada
+
+
+████████████████████████████████████████████████████████████████████████████████
+                            ESTIMATIVA DE TEMPO TOTAL
+████████████████████████████████████████████████████████████████████████████████
+
+FASE 1 (Crítico):        30-45 minutos
+FASE 2 (Importante):     1-2 horas
+FASE 3 (Avançado):       2-4 horas (OPCIONAL)
+FASE 4 (Validação):      1-2 horas
+
+TOTAL MÍNIMO (Fase 1+2+4):  3-5 horas
+TOTAL COMPLETO (Todas):     5-9 horas
+
+
+████████████████████████████████████████████████████████████████████████████████
+                              ORDEM DE EXECUÇÃO
+████████████████████████████████████████████████████████████████████████████████
+
+DIA 1 (2-3 horas):
+  ✓ Implementar FASE 1 completa (TODO 1.1 - 1.7)
+  ✓ Validar que Experimento 1 funciona
+  ✓ Verificar se métricas melhoraram
+
+DIA 2 (2-3 horas):
+  ✓ Implementar FASE 2 completa (TODO 2.1 - 2.7)
+  ✓ Validar CatBoost otimizado
+  ✓ Testar com 10 clientes
+
+DIA 3 (OPCIONAL - 2-4 horas):
+  ✓ FASE 3 se Balanced Acc > 70% na Fase 2
+  ✓ Early stopping
+  ✓ Deep trees experiment
+
+DIA 4 (1-2 horas):
+  ✓ FASE 4 - Validação final
+  ✓ Gerar todos os plots
+  ✓ Documentar resultados
+  ✓ Preparar apresentação
+
+
+████████████████████████████████████████████████████████████████████████████████
+                              CONTATOS E RECURSOS
+████████████████████████████████████████████████████████████████████████████████
+
+DOCUMENTAÇÃO TÉCNICA:
+- XGBoost: https://xgboost.readthedocs.io/en/stable/parameter.html
+- LightGBM: https://lightgbm.readthedocs.io/en/latest/Parameters.html
+- CatBoost: https://catboost.ai/en/docs/references/training-parameters
+- Flower FL: https://flower.ai/docs/
+
+PAPERS RELEVANTES:
+- Focal Loss: https://arxiv.org/abs/1708.02002
+- Class Imbalance: https://arxiv.org/abs/1710.05381
+- Federated Learning: https://arxiv.org/abs/1602.05629
+
+TROUBLESHOOTING:
+- Se métricas não melhorarem na Fase 1: Verificar class_weights sendo aplicados
+- Se CatBoost falhar: Verificar versão >= 1.2.0
+- Se out of memory: Reduzir num_clients ou samples_per_client
+- Se convergência lenta: Verificar learning_rate foi mudado
+
+
+████████████████████████████████████████████████████████████████████████████████
+                                  FIM DA TODO LIST
+                     Boa sorte com as implementações! 🚀
+████████████████████████████████████████████████████████████████████████████████

@@ -1,0 +1,252 @@
+================================================================================
+GUIA RÁPIDO - EXECUTAR EXPERIMENTOS COM MELHORIAS
+================================================================================
+Data: 2025-12-22
+Objetivo: Testar melhorias implementadas para classes desbalanceadas
+
+================================================================================
+MELHORIAS IMPLEMENTADAS (ATIVAS)
+================================================================================
+
+✅ 1. CLASS WEIGHTS (Balanceamento automático)
+   - Penaliza erros em classes minoritárias
+   - Max weight: 5.0 (evita instabilidade)
+   - Ativo via: use_class_weights=True no main.py
+
+✅ 2. EARLY STOPPING LOCAL
+   - Para treinamento se não melhorar por 5 rounds
+   - Economiza ~20-40% do tempo
+   - Ativo via: use_early_stopping=True no main.py
+
+✅ 3. HIPERPARÂMETROS OTIMIZADOS
+   - XGBoost: max_depth=4, eta=0.05, max_delta_step=1
+   - LightGBM: min_data_in_leaf=50, boost_from_average=True
+   - CatBoost: depth=5, learning_rate=0.05, l2_leaf_reg=5.0
+   - Ativo via: use_stable_params=True no main.py
+
+✅ 4. CURRICULUM LEARNING
+   - Ajusta pesos de classes progressivamente por round
+   - Warmup de 5 rounds antes de aplicar pesos máximos
+   - Ativo via: use_curriculum=True no main.py
+
+✅ 5. DIVERSITY AGGREGATION
+   - Agrega modelos ponderando por entropia de classes
+   - Clientes com classes mais balanceadas têm mais peso
+   - Ativo via: diversity_aggregation=True no main.py
+
+
+================================================================================
+COMO EXECUTAR OS EXPERIMENTOS
+================================================================================
+
+OPÇÃO 1: Executar TODOS os algoritmos e estratégias (RECOMENDADO)
+-------------------------------------------------------------------
+python main.py --algorithm all --strategy both
+
+Isso executará 6 experimentos:
+1. XGBoost Cyclic
+2. XGBoost Bagging
+3. LightGBM Cyclic
+4. LightGBM Bagging
+5. CatBoost Cyclic
+6. CatBoost Bagging
+
+Tempo estimado: ~6-10 minutos (com early stopping)
+
+
+OPÇÃO 2: Executar algoritmo específico
+-------------------------------------------------------------------
+# XGBoost apenas
+python main.py --algorithm xgboost --strategy both
+
+# LightGBM apenas
+python main.py --algorithm lightgbm --strategy both
+
+# CatBoost apenas
+python main.py --algorithm catboost --strategy both
+
+
+OPÇÃO 3: Executar experimento único (para testes rápidos)
+-------------------------------------------------------------------
+# XGBoost Cyclic (mais rápido)
+python main.py --algorithm xgboost --strategy cyclic
+
+# LightGBM Bagging (melhor baseline)
+python main.py --algorithm lightgbm --strategy bagging
+
+
+OPÇÃO 4: Customizar parâmetros
+-------------------------------------------------------------------
+# Reduzir rounds para teste rápido
+python main.py --algorithm xgboost --strategy cyclic --num-rounds 10
+
+# Alterar número de clientes
+python main.py --algorithm lightgbm --strategy bagging --num-clients 5
+
+# Testar sem balanceamento (baseline)
+python main.py --algorithm catboost --strategy cyclic --balance None
+
+
+================================================================================
+ARQUIVOS GERADOS
+================================================================================
+
+Após cada experimento, os logs são salvos em:
+
+logs/{algorithm}/{timestamp}_{strategy}/
+├── execution_log.txt        # Log textual completo
+├── metrics.json              # Métricas estruturadas (JSON)
+└── README.md                 # Resumo do experimento
+
+Exemplo:
+logs/xgboost/20251222_163045_cyclic/
+
+
+================================================================================
+MÉTRICAS IMPORTANTES A OBSERVAR
+================================================================================
+
+NO LOG TEXTUAL (execution_log.txt):
+-----------------------------------
+1. Balanced Accuracy (PRINCIPAL)
+   - Antes: ~0.65
+   - Meta: >0.75 (+15%)
+
+2. Macro F1-Score (PRINCIPAL)
+   - Antes: ~0.53
+   - Meta: >0.62 (+17%)
+
+3. Recall por Classe
+   - Classe 0 (minoritária): Antes ~0.55, Meta >0.70
+   - Classe 1 (majoritária): Antes ~0.80-0.90 (OK)
+   - Classe 2 (minoritária): Antes ~0.59, Meta >0.75
+
+4. Early Stopping Logs
+   - Procure: "[EARLY STOPPING] Parou em X/50 iterações"
+   - Economias de 20-40 iterações são esperadas
+
+
+NO METRICS.JSON:
+-----------------------------------
+{
+  "experiment_info": {
+    "balanced_accuracy_final": 0.XX,  # <<< PRINCIPAL
+    "macro_f1_final": 0.XX,           # <<< PRINCIPAL
+    "total_time_seconds": XXX
+  },
+  "metrics_by_round": { ... }
+}
+
+
+================================================================================
+COMPARAÇÃO: BASELINE vs OTIMIZADO
+================================================================================
+
+BASELINE (Manhã 22/12/2025):
+---------------------------
+✗ use_class_weights: False
+✗ use_stable_params: False
+✗ use_early_stopping: False
+✗ use_curriculum: False
+
+Melhor: LightGBM Cyclic R25
+- Balanced Accuracy: 0.6514
+- Macro F1: 0.5341
+- Recall Classe 0: 0.5584
+- Recall Classe 2: 0.5913
+
+OTIMIZADO (Tarde 22/12/2025):
+---------------------------
+✅ use_class_weights: True
+✅ use_stable_params: True
+✅ use_early_stopping: True
+✅ use_curriculum: True
+
+Expectativa:
+- Balanced Accuracy: 0.75-0.80
+- Macro F1: 0.62-0.68
+- Recall Classe 0: 0.68-0.75
+- Recall Classe 2: 0.70-0.78
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+ERRO: "OOM (Out of Memory)"
+---------------------------
+Solução: Reduzir número de clientes
+python main.py --algorithm xgboost --strategy cyclic --num-clients 5
+
+
+ERRO: "No module named 'scipy'"
+---------------------------
+Solução: Instalar dependências
+pip install scipy scikit-learn
+
+
+ERRO: Experimento muito lento
+---------------------------
+Verificar se early stopping está ativo:
+grep "use_early_stopping" main.py
+# Deve mostrar: "use_early_stopping": True
+
+
+ERRO: Balanced Accuracy não melhora
+---------------------------
+Verificar se stable params está ativo:
+grep "use_stable_params" main.py
+# Deve mostrar: "use_stable_params": True
+
+
+ERRO: Class weights não aparecem no log
+---------------------------
+Verificar configuração:
+grep "use_class_weights" main.py
+# Deve mostrar: "use_class_weights": True
+
+
+================================================================================
+ANÁLISE RÁPIDA DOS RESULTADOS
+================================================================================
+
+Após executar, use este comando para ver resumo:
+
+# Ver métricas finais de todos os experimentos
+find logs/ -name "metrics.json" -exec grep -A 5 "experiment_info" {} \;
+
+# Ver balanced accuracy de cada round
+grep "Balanced Accuracy:" logs/xgboost/*/execution_log.txt
+
+# Ver recall por classe
+grep "Recall por Classe" logs/xgboost/*/execution_log.txt
+
+
+================================================================================
+PRÓXIMOS PASSOS APÓS EXECUÇÃO
+================================================================================
+
+1. Comparar CHANGELOG_MELHORIAS.txt com resultados reais
+2. Atualizar seção "RESULTADOS APÓS IMPLEMENTAÇÃO"
+3. Se ganhos < 10%: Implementar Fase 2 (feature engineering, etc.)
+4. Se ganhos > 15%: Sucesso! Documentar para TCC
+5. Gerar plots comparativos usando generate_plots.py
+
+
+================================================================================
+CONTATO E REFERÊNCIAS
+================================================================================
+
+Documento principal: CHANGELOG_MELHORIAS.txt
+Arquivos modificados: common/fl_advanced.py (linhas 385-476)
+Configuração: main.py (linhas 37-64)
+
+Referências:
+- Flower FL: https://flower.ai/docs/
+- XGBoost imbalanced: https://xgboost.readthedocs.io/en/stable/tutorials/param_tuning.html
+- Scikit-learn class_weight: https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
+
+
+================================================================================
+FIM DO QUICK START
+================================================================================
