@@ -2,8 +2,93 @@
 
 \subsection{Interpretação dos Resultados}
 
+Os resultados experimentais revelam padrões consistentes que permitem extrair conclusões sobre o comportamento dos modelos de \textit{Gradient Boosting} em ambiente federado.
+
+\textbf{Comparação entre estratégias.} A estratégia Cíclica superou consistentemente a Bagging em todos os algoritmos, com o XGBoost Cíclico alcançando o melhor resultado absoluto (56,37\% TPR) e o CatBoost Cíclico o segundo melhor (56,23\%). Esta superioridade da Cíclica contrasta com a intuição de que o \textit{ensemble} da Bagging deveria produzir modelos mais robustos. A explicação reside no mecanismo de \textit{warm start}: na Cíclica, cada cliente refina sequencialmente o mesmo modelo, acumulando conhecimento de todos os clientes em um único modelo coeso. Na Bagging, embora o melhor modelo da rodada anterior seja enviado como ponto de partida, cada cliente diverge independentemente e a agregação final (ensemble por média de probabilidades) pode diluir padrões específicos aprendidos por clientes individuais. Ambas as estratégias utilizam \textit{warm start}, mas o mecanismo de transferência sequencial da Cíclica, combinado com \textit{learning rate decay} ($0{,}85^{r-1}$), provou-se mais eficaz para preservar e refinar o conhecimento acumulado.
+
+\textbf{Desempenho por algoritmo.} O XGBoost Cíclico alcançou o melhor TPR (56,37\%) e AUC-ROC (0,8921), seguido pelo CatBoost Cíclico (56,23\%, AUC 0,8905). O LightGBM, embora com desempenho ligeiramente inferior na Bagging (53,50\%), alcançou resultado competitivo na Cíclica (55,81\%). A diferença de performance entre Bagging e Cíclica foi mais pronunciada no LightGBM (+2,31 p.p.) do que no XGBoost (+1,89 p.p.) e CatBoost (+0,49 p.p.), sugerindo que o LightGBM é mais sensível à estratégia de agregação. Na análise de eficiência, o CatBoost destacou-se pelo menor volume de comunicação (9,62 MB na Cíclica --- $10\times$ menos que o LightGBM Bagging), enquanto o XGBoost Cíclico apresentou o melhor equilíbrio entre performance e tempo de execução.
+
+\textbf{Convergência e número de rodadas.} A análise de convergência revela que 15 rodadas são mais que suficientes: os modelos atingem $\geq$ 90\% do desempenho final nas primeiras 3--5 rodadas, com ganhos marginais e até leve degradação nas rodadas posteriores. O XGBoost Bagging, por exemplo, atinge pico na rodada 7 (52,93\% na validação) e recua para 52,38\% na rodada 15, indicando sobreajuste pelo acúmulo excessivo de árvores via \textit{warm start}. O CatBoost Cíclico demonstrou a convergência mais estável, mantendo TPR entre 51,90\% e 52,24\% da rodada 3 à 15. Na prática, 5--7 rodadas seriam suficientes para a maioria dos cenários, com redução proporcional no tempo de execução e volume de comunicação.
+
 \subsection{Comparação com Estado da Arte}
+
+Os resultados federados (TPR de 53,50--56,37\%) situam-se na faixa superior do \textit{baseline} centralizado reportado pelo BAF (40--55\% com 30 features). Contudo, esta comparação deve ser interpretada com cautela por duas razões.
+
+Primeiro, os experimentos federados utilizam 99 features após engenharia de features e \textit{One-Hot Encoding}, enquanto o \textit{baseline} centralizado utiliza as 30 features originais. A engenharia de features --- que inclui razões de velocidade, Z-scores mensais, interações entre atributos e codificação por frequência --- contribui significativamente para a capacidade preditiva dos modelos e explica, ao menos parcialmente, o desempenho superior observado.
+
+Segundo, os hiperparâmetros dos modelos federados foram otimizados via Optuna de forma federada (15 \textit{trials} por cliente, agregação por mediana), enquanto o \textit{baseline} do BAF avalia 100 configurações amostradas aleatoriamente. A otimização bayesiana tende a encontrar configurações superiores em menos avaliações.
+
+Apesar destas diferenças metodológicas, dois achados são relevantes: (i) o treinamento federado não introduz degradação severa de desempenho --- os modelos permanecem competitivos mesmo com dados distribuídos entre 3 clientes; (ii) os valores de FPR Ratio no regime standard ($\approx$ 0,28--0,31) são consistentes com os do \textit{baseline} centralizado ($\approx$ 0,3), indicando que a federalização não amplifica o viés demográfico.
+
+\subsection{Mecanismo de Correção de Fairness}
+
+O ajuste de fairness implementado neste trabalho utiliza a técnica de \textit{post-processing} com limiares de decisão específicos por grupo demográfico. O mecanismo funciona da seguinte forma:
+
+\begin{enumerate}
+    \item O modelo federado produz probabilidades de fraude $p(x)$ para cada transação, independentemente do grupo demográfico.
+    \item No regime \textbf{standard}, um único limiar $\tau$ é calibrado no conjunto completo para que a taxa de falsos positivos global seja exatamente 5\%. A decisão é $\hat{y} = \mathbb{1}[p(x) \geq \tau]$.
+    \item No regime \textbf{fair}, dois limiares são calibrados independentemente: $\tau_{\text{jovem}}$ para o grupo idade $< 50$ e $\tau_{\text{idoso}}$ para o grupo idade $\geq 50$, cada um ajustado para que o FPR do respectivo grupo seja 5\%. A decisão é:
+    \[
+    \hat{y} = \begin{cases}
+    \mathbb{1}[p(x) \geq \tau_{\text{jovem}}] & \text{se idade} < 50 \\
+    \mathbb{1}[p(x) \geq \tau_{\text{idoso}}] & \text{se idade} \geq 50
+    \end{cases}
+    \]
+\end{enumerate}
+
+Esta abordagem equaliza as taxas de falso positivo entre grupos sem modificar o modelo treinado, preservando toda a informação aprendida durante o treinamento federado. O FPR Ratio resultante (razão $\min/\max$ das FPR entre grupos) mede a equidade: valores próximos a 1,0 indicam que ambos os grupos sofrem taxas de falso positivo similares. O custo desta equalização é uma redução no TPR global, pois o limiar do grupo com menor FPR original (tipicamente o grupo jovem) é relaxado, enquanto o do grupo com maior FPR (idosos) é enrijecido. Na prática, esta perda foi de 1,5--2,3 p.p. em TPR, um custo moderado para garantir que clientes de diferentes faixas etárias não sejam desproporcionalmente afetados por falsos alertas.
+
+\subsection{Trade-off entre Fairness e Desempenho}
+
+A análise dos dois regimes de limiar revela um \textit{trade-off} controlável entre desempenho e fairness, claramente visível na Figura \ref{fig:tradeoff}. No gráfico, os pontos com limiar único (círculos) concentram-se no canto superior esquerdo --- alto TPR mas baixo FPR Ratio ($\approx$ 0,29) --- enquanto os pontos com limiar por grupo (quadrados) migram para o canto superior direito --- TPR ligeiramente menor mas FPR Ratio próximo de 1,0.
+
+O regime fair eleva o FPR Ratio de $\approx$ 0,28--0,31 para $\approx$ 0,91--1,00, reduzindo significativamente a disparidade nas taxas de falso positivo entre grupos etários. O custo em TPR é moderado: uma perda média de 1,8 pontos percentuais, variando de 1,54 p.p. (XGBoost Bagging) a 2,31 p.p. (LightGBM Bagging). Destaca-se o CatBoost Cíclico, que no regime fair alcançou o melhor TPR (54,69\%) com FPR Ratio de 0,995 --- o melhor equilíbrio geral entre performance e equidade.
+
+Este resultado tem implicação prática direta: instituições financeiras podem adotar o regime fair para cumprir requisitos regulatórios de não-discriminação \cite{gdpr2016} com impacto limitado na capacidade de detecção de fraude. A perda de $\approx$ 2 p.p. em TPR é uma troca aceitável para garantir que clientes legítimos de diferentes faixas etárias não sejam desproporcionalmente afetados por falsos alertas de fraude.
+
+\subsection{Desafios de Implementação}
+
+Durante o desenvolvimento e validação dos experimentos, foram identificados e corrigidos problemas que impactavam diretamente a confiabilidade dos resultados.
+
+\textbf{Implementação do \textit{warm start} para Bagging.} A estratégia Bagging originalmente treinava todos os clientes do zero em cada rodada. Foi implementado um mecanismo onde o servidor seleciona o melhor modelo da rodada anterior (baseado no TPR de validação) e o envia como ponto de partida para todos os clientes na rodada seguinte. Esta modificação resultou em convergência mais rápida e ganhos progressivos a cada rodada.
+
+\textbf{Controle de sobreajuste na estratégia Cíclica.} Observou-se que a Cíclica, por treinar sequencialmente o mesmo modelo em diferentes clientes, tendia a sobreajustar nas rodadas posteriores --- o TPR de validação declinava após atingir um pico nas rodadas intermediárias. Para mitigar este efeito, foi implementado um \textit{learning rate decay} exponencial com fator $0{,}85^{r-1}$, onde $r$ é o número da rodada. O \textit{decay} reduz progressivamente a taxa de aprendizado (por exemplo, de 0,05 na rodada 1 para 0,005 na rodada 15), permitindo ajustes mais finos nas rodadas avançadas e estabilizando a convergência.
+
+\textbf{Tratamento de valores faltantes e engenharia de features.} O dataset BAF utiliza o valor $-1$ como indicador de dados faltantes em diversas colunas. Foi necessário substituir esses valores por \texttt{NaN} e preencher com a mediana de cada coluna, resultando na remoção de aproximadamente 359 amostras com valores críticos ausentes. A expansão de 30 para 99 features através de engenharia de features --- incluindo codificação por frequência, Z-scores mensais e interações entre atributos --- exigiu cuidado para manter a consistência entre os conjuntos de treinamento, validação e teste. O \textit{One-Hot Encoding} foi ajustado com \texttt{handle\_unknown='ignore'} para evitar erros quando categorias presentes no teste não apareciam no treinamento.
+
+\textbf{Desbalanceamento severo de classes.} A taxa de fraude no conjunto de treinamento é de apenas 1,03\%, resultando em um \texttt{scale\_pos\_weight} de 96,53. A solução adotada foi a atribuição de pesos de classe nativos de cada framework (\texttt{scale\_pos\_weight} para XGBoost e LightGBM, \texttt{auto\_class\_weights='Balanced'} para CatBoost), que atribuem maior importância às amostras da classe minoritária durante o treinamento. Esta abordagem é compatível com o particionamento federado, pois não requer acesso a dados de outros clientes, diferentemente de técnicas de sobreamostragem como SMOTE.
+
+\textbf{Serialização heterogênea de modelos.} A transmissão de modelos entre clientes e servidor requer serialização em bytes, porém cada framework possui uma API distinta: o XGBoost permite serialização direta em JSON via \texttt{save\_raw()}, enquanto LightGBM e CatBoost exigem gravação em arquivos temporários. Para unificar o processo e evitar código duplicado, foi adotada uma abordagem baseada em \textit{pickle}, onde todos os modelos são serializados uniformemente como arrays NumPy.
+
+\textbf{Otimização federada de hiperparâmetros.} A otimização de hiperparâmetros em ambiente federado apresenta o desafio de que cada cliente pode encontrar configurações ótimas distintas para seus dados locais. A solução adotada executa o Optuna independentemente em cada cliente (utilizando 33\% dos dados locais para viabilizar as 15 tentativas) e agrega os resultados via mediana. Adicionalmente, foi implementado um limite máximo de 0,05 para a taxa de aprendizado (\textit{safety brake}), evitando que configurações excessivamente agressivas sugeridas pelo Optuna causassem instabilidade no treinamento federado.
+
+\textbf{Crescimento do modelo com \textit{warm start}.} O mecanismo de \textit{warm start}, que permite ao modelo continuar o treinamento a partir do ponto onde o cliente anterior parou, tem como efeito colateral o crescimento linear do modelo. No XGBoost Cíclico, o modelo cresce de 167 KB (rodada 1, 140 árvores) para 2,45 MB (rodada 15, $\approx$ 2.100 árvores). Este crescimento impacta tanto o volume de comunicação quanto o tempo de inferência, e sugere que em cenários com muitas rodadas pode ser necessário implementar técnicas de poda ou limitação do número total de árvores.
 
 \subsection{Limitações do Trabalho}
 
+Este trabalho possui limitações que devem ser consideradas na interpretação dos resultados:
+
+\begin{enumerate}
+    \item \textbf{Particionamento IID}: Os experimentos utilizam particionamento IID balanceado, que não captura a heterogeneidade estatística presente em cenários reais onde diferentes instituições possuem perfis de clientes distintos \cite{zhu2021noniid}. Cenários Non-IID podem degradar significativamente a convergência e o desempenho dos modelos.
+
+    \item \textbf{Número de clientes}: Apenas 3 clientes foram utilizados nas simulações. Cenários reais podem envolver dezenas ou centenas de participantes, introduzindo desafios adicionais de escalabilidade e comunicação \cite{bonawitz2019scale}.
+
+    \item \textbf{Engenharia de features}: A engenharia de features e \textit{One-Hot Encoding} expandem o dataset de 30 para 99 features, impedindo comparação direta com o \textit{baseline} de 30 features do BAF.
+
+    \item \textbf{Execução única}: Os experimentos foram executados uma única vez com semente fixa (\texttt{seed=42}), sem repetições para estimativa de variância. Análises estatísticas mais robustas exigiriam múltiplas execuções.
+
+    \item \textbf{Ausência de mecanismos de privacidade}: O sistema não implementa Agregação Segura \cite{bonawitz2017secagg} ou Privacidade Diferencial \cite{geyer2017differential}, focando na avaliação de desempenho dos algoritmos de árvore no contexto federado.
+
+    \item \textbf{Convergência e excesso de rodadas}: A análise mostrou que os modelos saturam entre as rodadas 5--7, sugerindo que 15 rodadas são excessivas para o cenário IID com 3 clientes. Cenários com mais clientes ou dados heterogêneos podem requerer mais rodadas.
+\end{enumerate}
+
 \subsection{Implicações Práticas}
+
+Os resultados sugerem que modelos de \textit{Gradient Boosting} baseados em árvore são candidatos viáveis para sistemas federados de detecção de fraude bancária, com as seguintes implicações:
+
+\begin{itemize}
+    \item \textbf{Escolha de algoritmo}: O XGBoost Cíclico é recomendado para cenários que priorizam desempenho absoluto (56,37\% TPR). Para cenários que priorizam eficiência de comunicação, o CatBoost Cíclico oferece TPR competitivo (56,23\%) transferindo apenas 9,62 MB em 15 rodadas. Para cenários que priorizam fairness com alta performance, o CatBoost Cíclico alcança TPR fair de 54,69\% com FPR Ratio de 0,995.
+    \item \textbf{Escolha de estratégia}: A Cíclica superou a Bagging em todos os algoritmos, com vantagens adicionais em tempo de execução e volume de comunicação. A Bagging pode ser preferível em cenários Non-IID, onde o \textit{ensemble} de modelos treinados em distribuições distintas pode oferecer maior robustez.
+    \item \textbf{Fairness}: A adoção de limiares por grupo permite equalizar taxas de falso positivo com perda moderada de capacidade de detecção (média de 1,8 p.p.), viabilizando conformidade regulatória.
+    \item \textbf{Eficiência}: A baixa transferência de dados dos modelos de árvore (9,6--95,9 MB em 15 rodadas) é compatível com redes de largura de banda limitada, reforçando a vantagem sobre modelos baseados em redes neurais profundas \cite{konecny2016communication, liu2024survey}. Com a recomendação prática de 5--7 rodadas, estes volumes seriam reduzidos proporcionalmente.
+\end{itemize}

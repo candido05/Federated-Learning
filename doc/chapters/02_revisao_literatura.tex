@@ -1,9 +1,85 @@
 \section{REVISÃO DE LITERATURA}
 
-\subsection{Trabalhos Relacionados sobre Aprendizado Federado}
+Esta seção apresenta uma revisão sistemática da literatura relacionada ao Aprendizado Federado aplicado à detecção de fraudes bancárias. A revisão está organizada em quatro subseções temáticas: trabalhos seminais sobre Aprendizado Federado, estudos sobre modelos baseados em árvore em ambientes federados, pesquisas específicas sobre detecção de fraudes bancárias, e uma análise comparativa que posiciona o presente trabalho em relação ao estado da arte.
 
-\subsection{Trabalhos sobre Modelos Baseados em Árvores}
+\subsection{Evolução do Aprendizado Federado}
 
-\subsection{Trabalhos sobre SDN e Otimização de Rede}
+O Aprendizado Federado foi formalmente introduzido por McMahan et al. \cite{mcmahan2017fedavg} com o algoritmo FedAvg (\textit{Federated Averaging}), que estabeleceu os fundamentos para o treinamento distribuído de modelos de aprendizado de máquina preservando a privacidade dos dados. Neste trabalho seminal, os autores demonstraram que é possível treinar modelos de alta qualidade em dados distribuídos através da agregação de atualizações locais, sem a necessidade de centralizar os dados brutos. Esta contribuição foi posteriormente expandida por Yang et al. \cite{yang2019fl}, que sistematizaram a taxonomia do campo, distinguindo entre Aprendizado Federado Horizontal (HFL), onde os participantes compartilham o mesmo espaço de atributos mas possuem amostras diferentes, e Aprendizado Federado Vertical (VFL), onde os participantes possuem atributos diferentes para as mesmas entidades.
 
-\subsection{Análise Comparativa dos Trabalhos}
+A escalabilidade do Aprendizado Federado foi abordada por Bonawitz et al. \cite{bonawitz2019scale}, que propuseram protocolos para sistemas com milhões de dispositivos participantes. Os autores estabeleceram métricas fundamentais para avaliação de sistemas FL em escala, incluindo latência de comunicação, tolerância a falhas e eficiência de recursos. Paralelamente, Konečný et al. \cite{konecny2016communication} investigaram estratégias para redução do custo de comunicação, um dos principais gargalos em sistemas federados, propondo técnicas de compressão e quantização de gradientes que permanecem relevantes para implementações práticas.
+
+A evolução recente do campo foi documentada em surveys abrangentes. Liu et al. \cite{liu2024survey} apresentaram uma taxonomia atualizada que categoriza as abordagens de FL em dimensões de otimização, privacidade e aplicações, identificando direções abertas como personalização e eficiência. Chai et al. \cite{chai2024survey} focaram especificamente em metodologias de avaliação, argumentando que sistemas FL devem ser avaliados não apenas pela utilidade (performance do modelo), mas também pela eficiência e segurança. Shi \cite{shi2023survey} documentou a transição do processamento centralizado para abordagens distribuídas, destacando que o FL representa uma resposta às regulamentações de privacidade e às limitações práticas de transferência de grandes volumes de dados.
+
+A transição do aprendizado centralizado para o distribuído foi analisada sistematicamente por Abdulrahman et al. \cite{abdulrahman2021survey}, que traçaram a evolução histórica desde o processamento em mainframes até o Aprendizado Federado contemporâneo. Os autores argumentam que esta evolução não é apenas técnica, mas também regulatória, impulsionada por legislações como o GDPR que restringem a centralização de dados pessoais \cite{voigt2017gdpr}.
+
+\subsection{Modelos Baseados em Árvore em Ambientes Federados}
+
+A adaptação de algoritmos de \textit{Gradient Boosting} para ambientes federados representa uma área de pesquisa ativa e particularmente relevante para aplicações em dados tabulares. Cheng et al. \cite{cheng2021secureboost} introduziram o SecureBoost, um framework que permite o treinamento federado de modelos XGBoost sem perda de precisão em relação ao treinamento centralizado. O SecureBoost utiliza agregação segura para evitar o compartilhamento de gradientes brutos, mitigando riscos de vazamento de informação enquanto mantém acurácia de aproximadamente 90\% em benchmarks de fraude. Esta contribuição é fundamental para o presente trabalho, pois valida a viabilidade de modelos baseados em árvore em cenários federados com requisitos rigorosos de privacidade.
+
+Li et al. \cite{li2023fedtree} propuseram o FedTree, um sistema otimizado para treinamento federado de árvores de decisão que demonstra ganhos significativos de eficiência. Os autores mostraram que sistemas de árvore otimizados podem ser ordens de magnitude mais rápidos que implementações ingênuas, um aspecto crucial para aplicações de detecção de fraude em tempo real onde a latência é crítica. O trabalho de Li, Wen e He \cite{li2020practical} sobre Gradient Boosting Decision Trees federadas práticas complementa esta linha, demonstrando que é possível manter a eficiência computacional característica do LightGBM em ambientes distribuídos.
+
+A questão da comunicação eficiente foi abordada por Le et al. \cite{le2021fedxgboost} com o FedXGBoost, uma implementação que utiliza agregação segura para contornar a necessidade de compartilhar gradientes brutos. Os autores demonstraram que a serialização baseada em histogramas, inerente a modelos como LightGBM, alinha-se naturalmente com os princípios de quantização defendidos para sistemas FL eficientes \cite{reisizadeh2020fedpaq}. Liu et al. \cite{liu2020fedforest} exploraram uma abordagem alternativa com o Federated Forest, utilizando encriptação para garantir privacidade em florestas de decisão, embora com maior overhead computacional.
+
+Um diferencial importante dos modelos baseados em árvore em relação a redes neurais profundas é sua resistência natural a ataques de vazamento de informação. Zhu, Liu e Han \cite{zhu2019deepleakage} demonstraram que é possível recuperar dados de treinamento a partir de gradientes em redes neurais (\textit{Deep Leakage from Gradients}). Contudo, conforme argumentado por Liu et al. \cite{liu2024survey}, modelos baseados em árvore oferecem uma barreira natural adicional, pois suas atualizações são baseadas em histogramas e divisões (\textit{splits}), tornando a reconstrução exata dos dados tabulares significativamente mais difícil.
+
+\subsection{Detecção de Fraudes Bancárias e Aprendizado Federado}
+
+A aplicação de Aprendizado Federado à detecção de fraudes financeiras tem recebido atenção crescente na literatura recente. Farrukh et al. \cite{farrukh2025blockchain} apresentaram uma revisão sistemática comparando abordagens de Machine Learning centralizado com Federated Learning para detecção de fraudes, concluindo que o FL representa a evolução necessária para o setor bancário. Os autores destacam que, embora métodos centralizados ofereçam alta precisão, eles criam silos de dados e pontos únicos de falha incompatíveis com as exigências regulatórias contemporâneas.
+
+Kennedy, Hilal e Momeni \cite{kennedy2025financial} investigaram especificamente o papel do FL na segurança financeira, propondo uma taxonomia baseada em níveis de exposição regulatória. Os autores classificam a detecção de fraude em abertura de conta como uma tarefa de ``alta exposição regulatória'', argumentando que o uso de FL não é apenas uma vantagem técnica, mas uma necessidade de \textit{compliance}. Notavelmente, o estudo documenta que a colaboração Cross-Silo entre bancos via FL pode reduzir taxas de falsos positivos em até 15\% comparado com modelos isolados.
+
+Claus, John e John \cite{claus2025collaborative} focaram especificamente em redes financeiras colaborativas, argumentando que fraudes complexas que ``saltam'' de banco para banco só podem ser efetivamente detectadas através de modelos treinados colaborativamente. Os autores propõem arquiteturas onde múltiplas instituições contribuem para um modelo global capaz de identificar padrões que seriam invisíveis para modelos treinados em silos isolados.
+
+Lynch, Abdelmoniem e Gill \cite{lynch2024fraud} forneceram uma comparação direta entre abordagens centralizadas e descentralizadas para detecção de fraude. Os autores observaram que, embora a abordagem centralizada tenha tipicamente uma ligeira vantagem em acurácia absoluta devido à visibilidade total dos dados, a abordagem federada oferece robustez superior contra ataques de inversão de modelo e cumpre requisitos regulatórios que a centralizada não consegue atender. Esta análise é particularmente relevante para quantificar o ``custo da privacidade'' em sistemas federados.
+
+\subsection{Heterogeneidade de Dados e Fairness}
+
+Um dos desafios fundamentais em sistemas de Aprendizado Federado é a natureza não-IID (\textit{Non-Independent and Identically Distributed}) dos dados distribuídos entre participantes. Zhu et al. \cite{zhu2021noniid} apresentaram um survey abrangente sobre este problema, documentando como a heterogeneidade estatística entre clientes pode degradar significativamente a performance de modelos globais. Os autores categorizam tipos de viés de dados, incluindo desbalanceamento de rótulos (\textit{label skew}), desbalanceamento de características (\textit{feature skew}) e desbalanceamento de quantidade (\textit{quantity skew}), todos relevantes para cenários de fraude bancária onde diferentes instituições possuem perfis de clientes distintos.
+
+Li et al. \cite{li2020fedprox} propuseram o FedProx como resposta à heterogeneidade, introduzindo um termo de regularização que limita a divergência entre modelos locais e o modelo global. Karimireddy et al. \cite{karimireddy2020scaffold} desenvolveram o SCAFFOLD, que utiliza variáveis de controle para corrigir a deriva de clientes causada por dados heterogêneos. Ambas as abordagens representam alternativas ao FedAvg original que podem ser consideradas em trabalhos futuros para mitigar efeitos de dados Non-IID.
+
+A questão de justiça algorítmica (\textit{fairness}) em ambientes federados foi investigada por Huang et al. \cite{huang2022fairness}, que estudaram especificamente o trade-off entre fairness e acurácia em Aprendizado Federado Horizontal. Este trabalho é diretamente relevante para o dataset BAF, que é explicitamente projetado para avaliação de viés demográfico. Os autores demonstram que, ao distribuir dados entre clientes, existe um compromisso complexo entre manter a precisão global e garantir que o modelo não discrimina grupos específicos de usuários.
+
+Zhang, Kou e Wang \cite{zhang2020fairfl} propuseram o FairFL, uma abordagem para reduzir viés demográfico em modelos federados preservando privacidade. Os autores argumentam que a mitigação de viés em ambientes federados apresenta desafios únicos, pois atributos demográficos sensíveis estão distribuídos entre participantes e não podem ser centralizados para correção. Hardt, Price e Srebro \cite{hardt2016equality} formalizaram conceitos fundamentais de justiça algorítmica como \textit{Equality of Opportunity} (igualdade nas taxas de verdadeiros positivos entre grupos). No contexto deste trabalho, a métrica de \textit{fairness} adotada segue a definição do artigo do BAF \cite{jesus2022baf}, que utiliza o \textit{FPR Ratio} --- a razão entre as taxas de falso positivo de diferentes grupos demográficos --- para avaliar se o modelo penaliza desproporcionalmente determinados grupos com falsos alertas de fraude.
+
+\subsection{Privacidade e Segurança}
+
+A preservação de privacidade em sistemas FL vai além da simples não-centralização de dados. Bonawitz et al. \cite{bonawitz2017secagg} propuseram protocolos de Agregação Segura (\textit{Secure Aggregation}) que garantem que o servidor central não tenha acesso às atualizações individuais dos clientes, apenas ao resultado agregado. Esta técnica é fundamental para sistemas federados em ambientes financeiros regulados.
+
+Geyer, Klein e Nabi \cite{geyer2017differential} investigaram a aplicação de Privacidade Diferencial (\textit{Differential Privacy}) em FL, propondo mecanismos que adicionam ruído estatístico às atualizações para garantir privacidade formal. Wei et al. \cite{wei2020privacy} formalizaram o trade-off entre privacidade e utilidade, demonstrando como a performance degrada à medida que garantias de privacidade aumentam. Esta análise é relevante para contextualizar resultados onde modelos federados apresentam performance inferior aos centralizados.
+
+A robustez contra ataques adversariais foi abordada por Miao et al. \cite{miao2022byzantine}, que propuseram mecanismos para proteção contra ataques bizantinos onde participantes mal-intencionados tentam corromper o modelo global. Esta preocupação é particularmente relevante em cenários bancários, onde a integridade do modelo de detecção de fraude é crítica para a segurança do sistema financeiro.
+
+\subsection{Análise Comparativa e Posicionamento do Trabalho}
+
+A Tabela \ref{tab:trabalhos_relacionados} apresenta uma análise comparativa dos principais trabalhos relacionados, destacando suas contribuições e limitações em relação ao presente estudo.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|X|X|}
+\hline
+\textbf{Trabalho} & \textbf{Contribuição Principal} & \textbf{Limitação / Lacuna} \\
+\hline
+SecureBoost \cite{cheng2021secureboost} & Framework lossless para XGBoost federado & Não avalia LightGBM e CatBoost \\
+\hline
+FedTree \cite{li2023fedtree} & Sistema otimizado para árvores federadas & Foco em eficiência, não em fraude \\
+\hline
+Kennedy et al. \cite{kennedy2025financial} & Taxonomia de FL em finanças & Análise teórica, sem experimentos comparativos \\
+\hline
+Farrukh et al. \cite{farrukh2025blockchain} & Revisão ML vs FL para fraude & Não compara algoritmos de boosting \\
+\hline
+BAF Dataset \cite{jesus2022baf} & Dataset benchmark para fraude & Avalia apenas LightGBM centralizado \\
+\hline
+Huang et al. \cite{huang2022fairness} & Trade-off fairness/accuracy em HFL & Não aplica a detecção de fraude \\
+\hline
+\textbf{Este trabalho} & \textbf{Comparação XGBoost/LightGBM/CatBoost federados no BAF com análise de fairness} & --- \\
+\hline
+\end{tabularx}
+\caption{Análise comparativa dos trabalhos relacionados}
+\label{tab:trabalhos_relacionados}
+\end{table}
+
+O presente trabalho diferencia-se da literatura existente em três aspectos principais. Primeiro, realiza uma comparação sistemática de três algoritmos de Gradient Boosting (XGBoost, LightGBM e CatBoost) em ambiente federado, preenchendo uma lacuna identificada na literatura onde estudos focam em algoritmos individuais. Segundo, utiliza o dataset BAF --- o benchmark mais recente e realista para detecção de fraude em abertura de contas --- estendendo a avaliação original do artigo \cite{jesus2022baf} para o contexto federado. Terceiro, avalia o desempenho dos modelos em cenário federado com particionamento IID balanceado, estabelecendo uma \textit{baseline} sólida para futuras investigações com dados heterogêneos (Non-IID), e contribui com análises de \textit{fairness} em modelos de fraude federados.
+
+De acordo com Liu et al. \cite{liu2024survey}, uma das direções abertas no campo é a personalização e eficiência de modelos federados. O presente trabalho ataca diretamente estas lacunas ao demonstrar que modelos de árvore são mais leves que redes neurais profundas para FL, e ao avaliar estratégias de agregação (Bagging e Cíclica) que exploram as características específicas de ensembles baseados em boosting.

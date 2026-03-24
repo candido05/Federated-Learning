@@ -505,6 +505,143 @@ def plot_communication_efficiency(summary, output_dir):
 
 
 # ============================================================================
+# Grafico 5: Curvas ROC (Standard e Fair)
+# ============================================================================
+
+def plot_roc_curves(strategies_trained, X_test, y_test, age_test, output_dir):
+    """
+    Curvas ROC para cada modelo/estrategia, com dois paineis:
+    - Esquerdo: curva ROC global (standard)
+    - Direito: curvas ROC por grupo demografico (fair)
+
+    Requer acesso aos objetos de estrategia treinados e dados de teste.
+    """
+    from sklearn.metrics import roc_curve, roc_auc_score
+    from ..data.metrics import get_threshold_at_fpr, get_group_threshold_at_fpr
+
+    setup_style()
+
+    fig, axes = plt.subplots(1, 2, figsize=FIGSIZE_WIDE)
+
+    # --- Painel esquerdo: ROC global ---
+    ax = axes[0]
+
+    for key, strategy in sorted(strategies_trained.items()):
+        model_type, strategy_type = key.split('_')
+
+        if strategy_type == 'bagging':
+            if not strategy.client_models:
+                continue
+            y_prob = strategy.predict_ensemble(X_test)
+        else:
+            if strategy.current_model is None:
+                continue
+            y_prob = strategy.predict(X_test)
+
+        fpr, tpr, _ = roc_curve(y_test, y_prob)
+        auc = roc_auc_score(y_test, y_prob)
+
+        label = f"{MODEL_LABELS[model_type]} {STRATEGY_LABELS[strategy_type]} (AUC={auc:.4f})"
+        ax.plot(
+            fpr, tpr,
+            color=MODEL_COLORS[model_type],
+            linestyle=STRATEGY_LINESTYLES[strategy_type],
+            linewidth=1.8, alpha=0.85,
+            label=label,
+        )
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=0.8, alpha=0.4, label='Aleatório')
+    ax.axvline(x=0.05, color='red', linestyle=':', linewidth=1, alpha=0.6, label='FPR = 5%')
+    ax.set_xlabel('Taxa de Falsos Positivos (FPR)')
+    ax.set_ylabel('Taxa de Verdadeiros Positivos (TPR)')
+    ax.set_title('Curva ROC Global (Limiar Unico)', fontweight='bold')
+    ax.legend(fontsize=7, loc='lower right')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1.02])
+    ax.grid(True, alpha=0.3)
+
+    # --- Painel direito: ROC por grupo demografico ---
+    ax = axes[1]
+
+    # Usar o melhor modelo (XGBoost Cycling) para mostrar as curvas por grupo
+    best_key = None
+    best_auc = 0
+    for key, strategy in strategies_trained.items():
+        model_type, strategy_type = key.split('_')
+        if strategy_type == 'bagging':
+            if not strategy.client_models:
+                continue
+            y_prob = strategy.predict_ensemble(X_test)
+        else:
+            if strategy.current_model is None:
+                continue
+            y_prob = strategy.predict(X_test)
+        auc = roc_auc_score(y_test, y_prob)
+        if auc > best_auc:
+            best_auc = auc
+            best_key = key
+
+    group_colors = {'Jovens (< 50)': '#2196F3', 'Idosos (>= 50)': '#FF5722'}
+
+    for key, strategy in sorted(strategies_trained.items()):
+        model_type, strategy_type = key.split('_')
+
+        if strategy_type == 'bagging':
+            if not strategy.client_models:
+                continue
+            y_prob = strategy.predict_ensemble(X_test)
+        else:
+            if strategy.current_model is None:
+                continue
+            y_prob = strategy.predict(X_test)
+
+        mask_young = age_test == 0
+        mask_old = age_test == 1
+
+        for mask, group_name, color in [
+            (mask_young, 'Jovens (< 50)', group_colors['Jovens (< 50)']),
+            (mask_old, 'Idosos (>= 50)', group_colors['Idosos (>= 50)']),
+        ]:
+            if mask.sum() == 0 or y_test[mask].sum() == 0:
+                continue
+
+            fpr_g, tpr_g, _ = roc_curve(y_test[mask], y_prob[mask])
+            auc_g = roc_auc_score(y_test[mask], y_prob[mask])
+
+            # Apenas mostrar label no melhor modelo para evitar legenda lotada
+            label = None
+            if key == best_key:
+                label = f"{group_name} (AUC={auc_g:.4f})"
+
+            ax.plot(
+                fpr_g, tpr_g,
+                color=color,
+                linestyle=STRATEGY_LINESTYLES[strategy_type],
+                linewidth=1.5 if key == best_key else 0.6,
+                alpha=0.9 if key == best_key else 0.2,
+                label=label,
+            )
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=0.8, alpha=0.4)
+    ax.axvline(x=0.05, color='red', linestyle=':', linewidth=1, alpha=0.6, label='FPR = 5%')
+    ax.set_xlabel('Taxa de Falsos Positivos (FPR)')
+    ax.set_ylabel('Taxa de Verdadeiros Positivos (TPR)')
+    ax.set_title('Curva ROC por Grupo Demografico', fontweight='bold')
+    ax.legend(fontsize=8, loc='lower right')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1.02])
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle('Curvas ROC: Analise Global e por Grupo', fontsize=14, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+
+    path = os.path.join(output_dir, 'curvas_roc.png')
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"  [OK] {path}")
+
+
+# ============================================================================
 # Funcao principal de integracao
 # ============================================================================
 

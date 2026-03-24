@@ -1,23 +1,140 @@
 \section{RESULTADOS}
 
-\subsection{Resultados em Cenário IID}
+\subsection{Baseline Centralizado}
 
-\subsubsection{Comparação de Modelos}
+O artigo original do BAF \cite{jesus2022baf} avaliou 100 configurações de hiperparâmetros de LightGBM no dataset Base utilizando treinamento centralizado. Os melhores modelos alcançaram TPR entre 40\% e 55\% no ponto de operação de 5\% FPR, com FPR Ratio em torno de 0,3 --- indicando que aplicações legítimas de indivíduos mais velhos tinham mais de três vezes mais chance de serem incorretamente classificadas como fraudulentas. Estes resultados servem como \textit{baseline} comparativo para os experimentos federados.
 
-\subsubsection{Comparação de Estratégias}
+\subsection{Resultados Federados}
 
-\subsection{Resultados em Cenário non-IID}
+Os experimentos federados foram conduzidos com 3 clientes em particionamento IID balanceado, 15 rodadas de comunicação e 15 épocas locais por rodada. A Tabela \ref{tab:resultados_federados} apresenta os resultados finais de todas as configurações, avaliados no conjunto de teste (mês 7) com ambos os regimes de limiar.
 
-\subsubsection{Comparação de Modelos}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|l|X|X|X|X|X|}
+\hline
+\bf Estratégia & \bf Modelo & \bf TPR Std & \bf AUC & \bf FPR Ratio Std & \bf TPR Fair & \bf FPR Ratio Fair \\ \hline
+\multirow{3}{*}{Bagging} & XGBoost & 54,48\% & 0,8844 & 0,313 & 52,94\% & 0,987 \\ \cline{2-7}
+ & LightGBM & 53,50\% & 0,8798 & 0,289 & 51,19\% & 0,921 \\ \cline{2-7}
+ & CatBoost & 55,74\% & 0,8794 & 0,286 & 53,71\% & 0,992 \\ \hline
+\multirow{3}{*}{Cíclica} & XGBoost & \textbf{56,37\%} & \textbf{0,8921} & 0,284 & 54,27\% & \textbf{0,999} \\ \cline{2-7}
+ & LightGBM & 55,81\% & 0,8903 & 0,288 & 53,57\% & 0,912 \\ \cline{2-7}
+ & CatBoost & 56,23\% & 0,8905 & 0,293 & \textbf{54,69\%} & 0,995 \\ \hline
+\end{tabularx}
+\caption{Resultados finais no conjunto de teste (mês 7). FPR Ratio = $\min/\max$ das FPR entre grupos demográficos; 1,0 indica fairness perfeita. Melhores valores em negrito.}
+\label{tab:resultados_federados}
+\end{table}
 
-\subsubsection{Impacto da Heterogeneidade}
+O XGBoost Cíclico alcançou o melhor TPR absoluto (56,37\%) e AUC-ROC (0,8921), seguido de perto pelo CatBoost Cíclico (56,23\%, AUC 0,8905). Na estratégia Bagging, o CatBoost obteve o melhor resultado (55,74\%), enquanto o LightGBM ficou abaixo dos demais (53,50\%). A estratégia Cíclica superou a Bagging para todos os algoritmos, beneficiando-se do treinamento sequencial com \textit{warm start} e \textit{learning rate decay}. Os valores de AUC-ROC foram similares entre as configurações Cíclicas (0,890--0,892), indicando capacidade discriminativa comparável, com diferença mais acentuada na Bagging (0,879--0,884). A Figura \ref{fig:auc_roc} apresenta a comparação visual dos valores de AUC-ROC.
 
-\subsection{Análise de Convergência}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{images/20260323_203608/auc_roc_comparacao.png}
+\caption{AUC-ROC por modelo e estratégia. Valores calculados no conjunto de teste (mês 7).}
+\label{fig:auc_roc}
+\end{figure}
 
-\subsection{Impacto da Integração SDN}
+No regime standard, todos os modelos apresentaram FPR Ratio entre 0,284 e 0,313, consistente com o \textit{baseline} centralizado ($\approx$ 0,3). No regime fair, os FPR Ratios sobem para 0,912--0,999, equalizando as taxas de falso positivo entre grupos com perda média de 1,8 p.p. em TPR. Destaca-se o XGBoost Cíclico, que no regime fair alcançou FPR Ratio de 0,999 (fairness virtualmente perfeita) com TPR de 54,27\%, e o CatBoost Cíclico com o melhor TPR fair (54,69\%) e FPR Ratio de 0,995. A Figura \ref{fig:tradeoff} ilustra o \textit{trade-off} entre performance e equidade para todas as configurações.
 
-\subsection{Análise Estatística}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{images/20260323_203608/tradeoff_performance_fairness.png}
+\caption{\textit{Trade-off} entre performance (TPR) e equidade (FPR Ratio). Círculos: limiar único; quadrados: limiar por grupo. A região verde indica fairness aceitável ($\geq$ 0,9).}
+\label{fig:tradeoff}
+\end{figure}
 
-\subsubsection{Teste de Friedman}
+\subsection{Convergência}
 
-\subsubsection{Teste Post-hoc de Nemenyi}
+A Tabela \ref{tab:convergencia} apresenta a evolução do TPR (regime standard) no conjunto de validação ao longo de rodadas selecionadas, e a Figura \ref{fig:convergencia} mostra a curva completa de convergência.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|l|X|X|X|X|X|X|}
+\hline
+\bf Estratégia & \bf Modelo & \bf R1 & \bf R3 & \bf R5 & \bf R7 & \bf R10 & \bf R15 \\ \hline
+\multirow{3}{*}{Bagging} & XGBoost & 49,83\% & 52,38\% & 52,59\% & 52,93\% & 51,97\% & 52,38\% \\ \cline{2-8}
+ & LightGBM & 50,17\% & 50,86\% & 52,04\% & 52,31\% & 51,69\% & 51,83\% \\ \cline{2-8}
+ & CatBoost & 50,17\% & 51,21\% & 51,69\% & 51,97\% & 51,69\% & 51,62\% \\ \hline
+\multirow{3}{*}{Cíclica} & XGBoost & 49,28\% & 51,69\% & 51,97\% & 51,62\% & 51,62\% & 51,76\% \\ \cline{2-8}
+ & LightGBM & 49,21\% & 50,86\% & 50,72\% & 50,79\% & 50,45\% & 50,38\% \\ \cline{2-8}
+ & CatBoost & 50,93\% & 52,24\% & 51,90\% & 52,04\% & 52,04\% & 51,97\% \\ \hline
+\end{tabularx}
+\caption{Evolução do TPR (limiar standard) no conjunto de validação por rodada selecionada}
+\label{tab:convergencia}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{images/20260323_203608/convergencia_tpr.png}
+\caption{Convergência do TPR@5\%FPR ao longo das 15 rodadas. Painel esquerdo: limiar único. Painel direito: limiar por grupo. Linha pontilhada vermelha: \textit{baseline} centralizado (55\%).}
+\label{fig:convergencia}
+\end{figure}
+
+É importante notar que os valores de TPR por rodada na Tabela \ref{tab:convergencia} (49--53\%) são sistematicamente inferiores aos resultados finais da Tabela \ref{tab:resultados_federados} (53--56\%). Isto ocorre porque as métricas por rodada são calculadas no \textbf{conjunto de validação} (mês 6, 108.132 amostras) durante o treinamento, enquanto a avaliação final é realizada no \textbf{conjunto de teste} (mês 7, 96.829 amostras). Como o limiar de decisão é recalibrado independentemente em cada conjunto para atingir exatamente 5\% de FPR, e as distribuições de fraude diferem entre meses (taxa de fraude de 1,34\% na validação vs. 1,47\% no teste), o ponto de operação resultante produz valores de TPR distintos. Este é o comportamento esperado em divisões temporais, onde meses diferentes possuem padrões de fraude ligeiramente diferentes.
+
+A análise de convergência revela três padrões:
+
+\begin{enumerate}
+    \item \textbf{Convergência rápida}: Todos os modelos atingem $\geq$ 90\% do seu desempenho final nas primeiras 3--5 rodadas. O ganho entre a rodada 1 e a rodada 5 é de 2--3 p.p., enquanto o ganho entre as rodadas 5 e 15 é inferior a 0,5 p.p.
+
+    \item \textbf{Estagnação e leve degradação}: Após atingir o pico (geralmente entre as rodadas 5--7), os modelos estabilizam ou apresentam leve declínio. O XGBoost Bagging, por exemplo, atinge seu pico na rodada 7 (52,93\%) e recua para 52,38\% na rodada 15. Este comportamento é esperado com \textit{warm start}, pois cada rodada adiciona árvores ao modelo existente, aumentando sua complexidade e o risco de sobreajuste.
+
+    \item \textbf{Cycling mais estável que Bagging nas rodadas tardias}: A estratégia Cíclica, graças ao \textit{learning rate decay} ($0{,}85^{r-1}$), apresenta menos oscilação nas rodadas finais. O CatBoost Cíclico mantém TPR estável entre 51,90\% e 52,24\% da rodada 3 à 15, confirmando a eficácia do controle de taxa de aprendizado.
+\end{enumerate}
+
+\subsection{Contribuição Sequencial dos Clientes (Estratégia Cíclica)}
+
+Na estratégia Cíclica, os clientes treinam em ordem circular (Cliente 0 $\rightarrow$ 1 $\rightarrow$ 2 $\rightarrow$ 0 $\rightarrow$ ...), cada um refinando o modelo recebido do cliente anterior. A Figura \ref{fig:cycling_clients} mostra a contribuição individual de cada cliente ao longo das rodadas.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{images/20260323_203608/cycling_client_contribution.png}
+\caption{Estratégia Cíclica: contribuição sequencial de cada cliente. A cor indica qual cliente treinou em cada rodada. A linha cinza conecta os pontos para mostrar a tendência.}
+\label{fig:cycling_clients}
+\end{figure}
+
+Observa-se que a contribuição dos clientes é relativamente uniforme, o que é esperado no particionamento IID balanceado onde todos os clientes possuem a mesma distribuição de dados (1,03\% de fraude). Os maiores ganhos ocorrem nos primeiros ciclos completos (rodadas 1--3), onde cada cliente contribui com informação inédita ao modelo. Nas rodadas posteriores, o \textit{learning rate decay} reduz progressivamente a magnitude das atualizações, estabilizando o modelo.
+
+\subsection{Eficiência}
+
+A Tabela \ref{tab:eficiencia} apresenta o tempo de execução e volume de dados transferidos entre clientes e servidor, e as Figuras \ref{fig:tempo} e \ref{fig:comunicacao} ilustram estas métricas.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|l|X|X|}
+\hline
+\bf Estratégia & \bf Modelo & \bf Tempo (s) & \bf Dados Transferidos (MB) \\ \hline
+\multirow{3}{*}{Bagging} & XGBoost & 522,80 & 55,93 \\ \cline{2-4}
+ & LightGBM & 1.238,16 & 95,92 \\ \cline{2-4}
+ & CatBoost & 574,85 & 18,36 \\ \hline
+\multirow{3}{*}{Cíclica} & XGBoost & 205,49 & 18,72 \\ \cline{2-4}
+ & LightGBM & 204,94 & 32,16 \\ \cline{2-4}
+ & CatBoost & 347,88 & 9,62 \\ \hline
+\end{tabularx}
+\caption{Tempo de execução e volume de comunicação das simulações federadas (15 rodadas)}
+\label{tab:eficiencia}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{images/20260323_203608/tempo_execucao.png}
+\caption{Tempo de execução por modelo e estratégia. A estratégia Cíclica é consistentemente mais rápida.}
+\label{fig:tempo}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{images/20260323_203608/eficiencia_comunicacao.png}
+\caption{Volume total de dados transferidos por modelo e estratégia. O CatBoost Cíclico é o mais eficiente (9,62 MB).}
+\label{fig:comunicacao}
+\end{figure}
+
+A estratégia Cíclica é consistentemente mais rápida e econômica que a Bagging para todos os algoritmos, pois treina apenas um cliente por rodada contra três na Bagging. O LightGBM Bagging é o mais lento (1.238s, $\approx$ 21 minutos) e transfere o maior volume de dados (95,92 MB), enquanto o CatBoost Cíclico é o mais eficiente em comunicação (9,62 MB) --- uma diferença de $10\times$ que pode ser determinante em cenários com largura de banda limitada. O XGBoost e LightGBM Cíclicos apresentam tempos similares ($\approx$ 205s), demonstrando que a estratégia Cíclica equaliza o tempo de execução entre algoritmos de complexidade similar.
+
+O crescimento do volume de comunicação por rodada é linear: cada rodada transmite o modelo atualizado, que acumula árvores adicionadas pelo \textit{warm start}. No XGBoost Cíclico, o modelo cresce de 167 KB na rodada 1 para 2,45 MB na rodada 15, refletindo o acúmulo de 140 árvores por rodada. Esta propriedade dos modelos baseados em árvore contrasta com redes neurais, cujo tamanho de modelo é fixo independentemente do número de rodadas.
+
+\subsection{Comparação Federado vs. Centralizado}
+
+Os modelos federados alcançaram TPR entre 53,50\% e 56,37\%, na faixa superior do \textit{baseline} centralizado do BAF (40--55\%). Contudo, a comparação direta é limitada pois os experimentos federados utilizam 99 features (após engenharia de features e OHE), enquanto o \textit{baseline} usa as 30 features originais. Apesar desta diferença, os valores de FPR Ratio no regime standard (0,284--0,313) são consistentes com o \textit{baseline} ($\approx$ 0,3), indicando que a federalização não introduz viés demográfico adicional. O CatBoost e o XGBoost, não avaliados no artigo original do BAF, demonstraram desempenho competitivo ou superior ao LightGBM no cenário federado --- representando uma contribuição inédita deste trabalho.

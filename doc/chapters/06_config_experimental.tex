@@ -2,25 +2,146 @@
 
 \subsection{Ambiente Computacional}
 
+Os experimentos foram executados em ambiente virtualizado WSL2 (\textit{Windows Subsystem for Linux 2}) sobre sistema operacional Windows 11, utilizando Python 3.12.3 e o framework de simulação do Flower \cite{flower2020} com backend Ray para orquestração dos clientes federados. A Tabela \ref{tab:hardware} apresenta as especificações do ambiente.
+
 \begin{table}[H]
 \centering
 \begin{tabularx}{\textwidth}{|l|X|}
 \hline
 \bf Componente & \bf Especificação \\ \hline
-Processador & [Modelo e frequência] \\ \hline
-Memória RAM & [Quantidade] GB \\ \hline
-GPU & [Modelo] ou N/A \\ \hline
-Sistema Operacional & [Nome e versão] \\ \hline
-Python & [Versão] \\ \hline
+Sistema Operacional & WSL2 (Ubuntu) sobre Windows 11 \\ \hline
+Plataforma & Linux 5.15.167.4-microsoft-standard-WSL2 x86\_64 \\ \hline
+Python & 3.12.3 (GCC 13.3.0) \\ \hline
+Framework FL & Flower (modo simulação com Ray) \\ \hline
+Modelos & XGBoost, LightGBM, CatBoost \\ \hline
+Otimização & Optuna (busca de hiperparâmetros) \\ \hline
 \end{tabularx}
 \caption{Especificações do ambiente computacional}
 \label{tab:hardware}
 \end{table}
 
-\subsection{Hiperparâmetros dos Modelos}
+O modo de simulação do Flower permite executar servidor e múltiplos clientes em um único processo, utilizando Ray para gerenciar os recursos computacionais e simular a comunicação entre participantes. Esta abordagem é recomendada para prototipagem e avaliação experimental, eliminando a necessidade de infraestrutura de rede real enquanto preserva o comportamento do protocolo federado \cite{flower2020}.
+
+\subsection{Configuração do Dataset}
+
+O dataset BAF Base \cite{jesus2022baf} foi preparado conforme descrito na Seção 5, resultando na configuração apresentada na Tabela \ref{tab:dataset_config}.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\bf Parâmetro & \bf Valor \\ \hline
+Total de amostras & 999.641 \\ \hline
+Número de features & 99 (após engenharia de features e OHE) \\ \hline
+Conjunto de treino & 794.680 amostras (meses 0--5) \\ \hline
+Conjunto de validação & 108.132 amostras (mês 6) \\ \hline
+Conjunto de teste & 96.829 amostras (mês 7) \\ \hline
+Taxa de fraude (treino) & 1,03\% \\ \hline
+Taxa de fraude (validação) & 1,34\% \\ \hline
+Taxa de fraude (teste) & 1,47\% \\ \hline
+\texttt{scale\_pos\_weight} & 96,53 \\ \hline
+\end{tabularx}
+\caption{Configuração do dataset para os experimentos}
+\label{tab:dataset_config}
+\end{table}
+
+O parâmetro \texttt{scale\_pos\_weight}, calculado como a razão entre amostras negativas e positivas no conjunto de treino, é utilizado por todos os três algoritmos para compensar o severo desbalanceamento de classes durante o treinamento, atribuindo maior peso às amostras da classe minoritária (fraude).
+
+\subsection{Otimização Federada de Hiperparâmetros}
+
+Os hiperparâmetros de cada algoritmo foram otimizados de forma federada: cada cliente executa independentemente 15 \textit{trials} de busca bayesiana via Optuna, utilizando 33\% dos seus dados locais. Os resultados são agregados no servidor via mediana --- mais robusta contra \textit{outliers} que a média aritmética --- preservando a localidade dos dados. A métrica otimizada é o TPR no ponto de operação de 5\% de FPR, com taxa de aprendizado limitada a 0,05 (\textit{safety brake}) para evitar sobreajuste no treinamento federado com \textit{warm start}. Os hiperparâmetros selecionados são apresentados na Tabela \ref{tab:hyperparams}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
+\bf Algoritmo & \bf Hiperparâmetro & \bf Valor \\ \hline
+\multirow{6}{*}{XGBoost} & \texttt{max\_depth} & 3 \\ \cline{2-3}
+ & \texttt{learning\_rate} & 0,0500 \\ \cline{2-3}
+ & \texttt{n\_estimators} & 140 \\ \cline{2-3}
+ & \texttt{min\_child\_weight} & 7 \\ \cline{2-3}
+ & \texttt{subsample} & 0,9306 \\ \cline{2-3}
+ & \texttt{colsample\_bytree} & 0,8955 \\ \hline
+\multirow{7}{*}{LightGBM} & \texttt{max\_depth} & 4 \\ \cline{2-3}
+ & \texttt{learning\_rate} & 0,0270 \\ \cline{2-3}
+ & \texttt{n\_estimators} & 151 \\ \cline{2-3}
+ & \texttt{num\_leaves} & 61 \\ \cline{2-3}
+ & \texttt{min\_child\_samples} & 14 \\ \cline{2-3}
+ & \texttt{subsample} & 0,6799 \\ \cline{2-3}
+ & \texttt{colsample\_bytree} & 0,8057 \\ \hline
+\multirow{4}{*}{CatBoost} & \texttt{depth} & 4 \\ \cline{2-3}
+ & \texttt{learning\_rate} & 0,0332 \\ \cline{2-3}
+ & \texttt{iterations} & 230 \\ \cline{2-3}
+ & \texttt{l2\_leaf\_reg} & $8{,}50 \times 10^{-7}$ \\ \hline
+\end{tabularx}
+\caption{Hiperparâmetros otimizados para cada algoritmo}
+\label{tab:hyperparams}
+\end{table}
 
 \subsection{Configuração do Aprendizado Federado}
 
+A Tabela \ref{tab:fl_config} apresenta os parâmetros da simulação federada.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|X|}
+\hline
+\bf Parâmetro & \bf Valor \\ \hline
+Número de clientes & 3 \\ \hline
+Rodadas de comunicação & 15 \\ \hline
+Épocas locais por rodada & 15 \\ \hline
+Fração de amostragem & 1,0 (todos os clientes participam) \\ \hline
+Particionamento & IID balanceado \\ \hline
+Semente aleatória & 42 \\ \hline
+FPR alvo & 5\% \\ \hline
+\textit{Learning rate decay} (Cíclica) & $0{,}85^{r-1}$ por rodada $r$ \\ \hline
+\end{tabularx}
+\caption{Parâmetros da simulação federada}
+\label{tab:fl_config}
+\end{table}
+
+Os dados de treino foram distribuídos uniformemente entre 3 clientes, cada um recebendo aproximadamente 264.893 amostras com 2.716 instâncias de fraude (taxa de 1,03\%), preservando a distribuição de classes do dataset original. Os conjuntos de validação e teste são mantidos centralizados no servidor para avaliação global do modelo.
+
+Ambas as estratégias utilizam \textit{warm start}: na Bagging, o melhor modelo da rodada anterior é enviado para todos os clientes; na Cíclica, o modelo é passado sequencialmente entre clientes. A estratégia Cíclica aplica adicionalmente \textit{learning rate decay} com fator 0,85 por rodada para controlar o sobreajuste do treinamento sequencial.
+
 \subsection{Experimentos Realizados}
 
+Foram conduzidas 6 simulações, correspondendo à combinação de 3 algoritmos (XGBoost, LightGBM e CatBoost) com 2 estratégias de agregação (Bagging e Cíclica), conforme apresentado na Tabela \ref{tab:experiments}.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
+\bf Algoritmo & \bf Estratégia & \bf Descrição \\ \hline
+XGBoost & Bagging & 3 clientes treinam em paralelo; árvores agregadas por ensemble \\ \hline
+XGBoost & Cíclica & Clientes treinam sequencialmente; modelo passa entre clientes \\ \hline
+LightGBM & Bagging & 3 clientes treinam em paralelo; árvores agregadas por ensemble \\ \hline
+LightGBM & Cíclica & Clientes treinam sequencialmente; modelo passa entre clientes \\ \hline
+CatBoost & Bagging & 3 clientes treinam em paralelo; árvores agregadas por ensemble \\ \hline
+CatBoost & Cíclica & Clientes treinam sequencialmente; modelo passa entre clientes \\ \hline
+\end{tabularx}
+\caption{Experimentos realizados}
+\label{tab:experiments}
+\end{table}
+
+Cada simulação executa 15 rodadas de comunicação, e ao final de cada rodada o modelo global é avaliado no conjunto de validação utilizando dois regimes de limiar:
+
+\begin{itemize}
+    \item \textbf{Standard}: Um único limiar global calibrado para 5\% de FPR no conjunto completo.
+    \item \textbf{Fair}: Limiares independentes por grupo demográfico (idade $\geq$ 50 e idade $<$ 50), cada um calibrado para 5\% de FPR no respectivo grupo. Esta técnica de \textit{post-processing} ajusta os pontos de operação separadamente para cada grupo, equalizando as taxas de falso positivo sem modificar o modelo treinado.
+\end{itemize}
+
 \subsection{Métricas de Avaliação}
+
+As métricas reportadas para cada experimento são:
+
+\begin{itemize}
+    \item \textbf{TPR @ 5\% FPR}: Taxa de verdadeiros positivos no ponto de operação de 5\% de taxa de falsos positivos, conforme utilizado no artigo do BAF \cite{jesus2022baf} como métrica principal de desempenho em produção.
+    \item \textbf{AUC-ROC}: Área sob a curva ROC, medida de discriminação independente do limiar.
+    \item \textbf{FPR Ratio}: Razão entre as taxas de falso positivo dos grupos demográficos ($\min/\max$), onde 1,0 indica fairness perfeita.
+    \item \textbf{Tempo de execução}: Duração total da simulação em segundos.
+    \item \textbf{Bytes transferidos}: Volume total de dados transferidos entre clientes e servidor.
+\end{itemize}
+
+O tempo total do experimento completo (incluindo pré-processamento, otimização de hiperparâmetros e as 6 simulações) foi de 7.021 segundos (aproximadamente 1 hora e 57 minutos).

@@ -33,7 +33,7 @@ from .tuning.optimization import federated_hyperparameter_optimization
 from .core.runner import run_federated_training
 from .reporting.plots import PlotGenerator
 from .reporting.experiment_logger import ExperimentLogger
-from .reporting.tcc_plots import generate_tcc_plots
+from .reporting.tcc_plots import generate_tcc_plots, plot_roc_curves
 
 
 def parse_args():
@@ -58,12 +58,6 @@ def print_banner():
     print("#" + " " * 20 + "FEDERATED LEARNING COM FLOWER" + " " * 20 + "#")
     print("#" + " " * 15 + "BANK ACCOUNT FRAUD DETECTION (CORRIGIDO)" + " " * 15 + "#")
     print("#" * 80)
-    print("\nCorrecoes implementadas:")
-    print("  1. fl.simulation.start_simulation (motor oficial)")
-    print("  2. Warm Start para Cycling (transferencia de conhecimento)")
-    print("  3. Post-Processing com Limiares por Grupo (Fairness = 1.0)")
-    print("  4. Serializacao correta: parameters_to_ndarrays / ndarrays_to_parameters")
-    print("  5. Optuna FEDERADO: cada cliente otimiza localmente, parametros agregados")
 
 
 def print_report(df_results: pd.DataFrame):
@@ -205,6 +199,9 @@ def main():
     experiment_data_dir = os.path.join(EXPERIMENTS_DIR, experiment_logger.experiment_id)
     tcc_plot_dir = os.path.join(IMAGES_DIR, experiment_logger.experiment_id)
     generate_tcc_plots(experiment_data_dir, tcc_plot_dir)
+
+    # Gerar curvas ROC (requer objetos de estrategia e dados de teste)
+    plot_roc_curves(strategies_trained, X_test, y_test, age_test, tcc_plot_dir)
 
     return df_results
 

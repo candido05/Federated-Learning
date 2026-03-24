@@ -1,37 +1,199 @@
 \section{DATASET E PREPARAÇÃO DOS DADOS}
 
-\subsection{Seleção do Dataset}
+\subsection{O Dataset Bank Account Fraud (BAF)}
+
+Para avaliar o desempenho dos algoritmos de Aprendizado Federado neste trabalho, foi utilizado o dataset \textit{Bank Account Fraud} (BAF) \cite{jesus2022baf}, publicado no NeurIPS 2022 (\textit{Track on Datasets and Benchmarks}). O BAF constitui o primeiro conjunto de dados publicamente disponível, de larga escala, realista e com preservação de privacidade, voltado especificamente para a detecção de fraudes em abertura de contas bancárias online. O dataset está disponível publicamente no repositório GitHub do Feedzai\footnote{https://github.com/feedzai/bank-account-fraud}.
+
+\subsubsection{Contexto e Domínio de Aplicação}
+
+O dataset BAF aborda a detecção de tentativas fraudulentas de abertura de contas bancárias em um grande banco de consumo. Neste cenário, fraudadores tentam se passar por outra pessoa (roubo de identidade) ou criar uma identidade fictícia para obter acesso aos serviços bancários. Após conseguir acesso a uma nova conta, o fraudador rapidamente esgota a linha de crédito associada ou utiliza a conta para receber pagamentos ilícitos. Todos os custos são suportados pelo banco, já que não há como rastrear a verdadeira identidade do fraudador \cite{jesus2022baf}.
+
+Este caso de uso é considerado um domínio de alto impacto (\textit{high-stakes domain}) para aplicação de ML. Uma predição positiva (classificada como fraudulenta) leva à rejeição da aplicação de conta bancária do cliente (ação punitiva), enquanto uma predição negativa leva à concessão de acesso a uma nova conta e seu cartão de crédito (ação assistiva). Possuir uma conta bancária é considerado um direito básico na União Europeia, tornando a detecção de fraudes uma aplicação extremamente pertinente do ponto de vista social \cite{jesus2022baf}.
+
+\subsubsection{Geração dos Dados e Preservação de Privacidade}
+
+O dataset BAF foi gerado a partir de um dataset real e anonimizado de detecção de fraudes em abertura de contas bancárias, utilizando técnicas estado da arte de geração de dados tabulares. Especificamente, foram utilizados modelos \textit{Conditional Tabular Generative Adversarial Network} (CTGAN) \cite{xu2019ctgan} para gerar dados sintéticos que preservam as propriedades estatísticas dos dados originais enquanto garantem a privacidade dos solicitantes.
+
+O processo de preservação de privacidade envolveu múltiplas etapas \cite{jesus2022baf}:
+
+\begin{enumerate}
+    \item \textbf{Seleção de features}: A partir do dataset original, foram treinadas 200 configurações de hiperparâmetros de LightGBM. As features foram selecionadas com base na importância atribuída pelos 5 melhores modelos dentre essas configurações, resultando em 43 features candidatas, que foram então manualmente reduzidas para 30 features finais visando maximizar expressividade e interpretabilidade.
+
+    \item \textbf{Adição de ruído Laplaciano}: Aplicação de ruído Laplaciano às colunas do dataset original antes do treinamento da GAN, garantindo um orçamento de privacidade diferencial $\epsilon$. O nível de ruído é inversamente proporcional ao orçamento de privacidade.
+
+    \item \textbf{Categorização de atributos sensíveis}: Informações sobre idade e renda dos solicitantes foram categorizadas (em faixas) antes do treinamento da GAN, impedindo o acesso a dados específicos dos solicitantes.
+
+    \item \textbf{Filtragem de duplicatas}: Após a geração, foi garantido que nenhuma instância gerada correspondia exatamente a uma instância do dataset original.
+\end{enumerate}
+
+\subsubsection{Suite de Datasets e Variantes}
+
+O BAF é composto por uma suite de 6 datasets: um dataset base e 5 variantes adicionais, cada uma com padrões controlados de viés de dados. Cada variante segue a mesma distribuição subjacente (todas as instâncias são amostradas do mesmo modelo generativo), mas introduz diferentes tipos de viés para permitir testes de estresse de desempenho e \textit{fairness}. As variantes são descritas na Tabela \ref{tab:baf_variants}.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|l|l|l|X|}
+\hline
+\bf Dataset & \bf Grupo & \bf Tamanho & \bf Prevalência & \bf Separabilidade \\ \hline
+\multirow{2}{*}{Base} & Maioria & 77\% & 0,9\% & -- \\ \cline{2-5}
+ & Minoria & 23\% & 1,8\% & -- \\ \hline
+\multirow{2}{*}{Variante I} & Maioria & 90\% & 1,1\% & -- \\ \cline{2-5}
+ & Minoria & 10\% & 1,1\% & -- \\ \hline
+\multirow{2}{*}{Variante II} & Maioria & 50\% & 0,4\% & -- \\ \cline{2-5}
+ & Minoria & 50\% & 1,9\% & -- \\ \hline
+\multirow{2}{*}{Variante III} & Maioria & 50\% & 1,1\% & Aumentada \\ \cline{2-5}
+ & Minoria & 50\% & 1,1\% & Igual \\ \hline
+\multirow{2}{*}{Variante IV} & Maioria & 50\% & 0,3\% (1,5\%) & -- \\ \cline{2-5}
+ & Minoria & 50\% & 1,7\% (1,5\%) & -- \\ \hline
+\multirow{2}{*}{Variante V} & Maioria & 50\% & 1,1\% & Aumentada (Igual) \\ \cline{2-5}
+ & Minoria & 50\% & 1,1\% & Igual (Igual) \\ \hline
+\end{tabularx}
+\caption{Resumo das variantes do dataset BAF. Valores entre parênteses referem-se ao conjunto de teste. Adaptado de \cite{jesus2022baf}.}
+\label{tab:baf_variants}
+\end{table}
+
+Os tipos de viés introduzidos nas variantes baseiam-se em uma taxonomia de viés de dados \cite{jesus2022baf}:
+
+\begin{itemize}
+    \item \textbf{Disparidade de tamanho de grupo}: Frequências diferentes dos grupos do atributo protegido (idade) no dataset.
+    \item \textbf{Disparidade de prevalência}: A probabilidade da classe (fraude) depende do grupo protegido.
+    \item \textbf{Disparidade de separabilidade}: A distribuição conjunta das features e do rótulo varia entre grupos, afetando a dificuldade de classificação por grupo.
+\end{itemize}
+
+Neste trabalho, utilizamos o dataset \textbf{Base} do BAF para os experimentos de Aprendizado Federado, por ser a variante que mais fielmente reproduz as características do dataset original sem vieses adicionais controlados.
+
+\subsection{Estrutura e Características do Dataset}
+
+A Tabela \ref{tab:baf_metadata} apresenta os metadados do dataset BAF Base utilizado nos experimentos deste trabalho.
 
 \begin{table}[H]
 \centering
 \begin{tabularx}{\textwidth}{|l|X|}
 \hline
 \bf Característica & \bf Valor \\ \hline
-Nome & [Nome do dataset] \\ \hline
-Fonte & [URL/Repositório] \\ \hline
-Número de amostras & [N] \\ \hline
-Número de features & [M] \\ \hline
-Classes & [Lista de classes] \\ \hline
-Tipo de problema & Classificação binária/multiclasse \\ \hline
+Nome & Bank Account Fraud (BAF) --- Base \\ \hline
+Origem & Dados sintéticos gerados por CTGAN a partir de dados reais anonimizados \\ \hline
+Publicação & NeurIPS 2022 (Datasets and Benchmarks Track) \\ \hline
+Total de instâncias & 1.000.000 de aplicações individuais \\ \hline
+Número de features & 30 features (numéricas e categóricas) \\ \hline
+Variável alvo & \texttt{fraud\_bool} (0 = legítimo, 1 = fraude) \\ \hline
+Classes & 2 (classificação binária) \\ \hline
+Taxa de fraude & $\approx$ 1,1\% (altamente desbalanceado) \\ \hline
+Período temporal & 8 meses (fevereiro a setembro) \\ \hline
+Atributos protegidos & \texttt{customer\_age}, \texttt{income}, \texttt{employment\_status} \\ \hline
 \end{tabularx}
-\caption{Metadados do dataset}
-\label{tab:dataset_metadata}
+\caption{Metadados do dataset BAF Base utilizado nos experimentos}
+\label{tab:baf_metadata}
 \end{table}
+
+Cada instância (linha) do dataset representa uma aplicação individual de abertura de conta bancária realizada em uma plataforma online. O rótulo de cada instância é armazenado na coluna \texttt{fraud\_bool}: uma instância positiva representa uma tentativa fraudulenta, enquanto uma instância negativa representa uma aplicação legítima.
 
 \subsection{Descrição das Features}
 
-\subsection{Análise Exploratória dos Dados}
+O dataset contém 30 features que representam propriedades observadas das aplicações de abertura de conta. Estas features podem ser obtidas diretamente do solicitante (ex.: status de emprego), derivadas das informações fornecidas (ex.: se o número de telefone é válido), ou calculadas como agregações dos dados (ex.: frequência de aplicações em um dado CEP). As features estão organizadas nas categorias apresentadas na Tabela \ref{tab:baf_features}.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|X|l|}
+\hline
+\bf Feature & \bf Descrição & \bf Tipo \\ \hline
+\multicolumn{3}{|c|}{\textbf{Informações do Solicitante}} \\ \hline
+income & Faixa de renda do solicitante (categorizada) & categ. \\ \hline
+customer\_age & Faixa etária do solicitante (categorizada) & categ. \\ \hline
+employment\_status & Status de emprego do solicitante & categ. \\ \hline
+housing\_status & Status de moradia do solicitante & categ. \\ \hline
+\multicolumn{3}{|c|}{\textbf{Informações da Aplicação}} \\ \hline
+payment\_type & Tipo de pagamento selecionado & categ. \\ \hline
+intended\_balcon\_amount & Valor pretendido de saldo/crédito & float \\ \hline
+proposed\_credit\_limit & Limite de crédito proposto & float \\ \hline
+days\_since\_request & Dias desde a solicitação & float \\ \hline
+source & Fonte/canal da aplicação & categ. \\ \hline
+device\_os & Sistema operacional do dispositivo & categ. \\ \hline
+\multicolumn{3}{|c|}{\textbf{Verificações e Validações}} \\ \hline
+email\_is\_free & Se o e-mail é de provedor gratuito (0/1) & int \\ \hline
+phone\_home\_valid & Se o telefone residencial é válido (0/1) & int \\ \hline
+phone\_mobile\_valid & Se o telefone celular é válido (0/1) & int \\ \hline
+has\_other\_cards & Se possui outros cartões (0/1) & int \\ \hline
+foreign\_request & Se a requisição é de origem estrangeira (0/1) & int \\ \hline
+name\_email\_similarity & Similaridade entre nome e e-mail & float \\ \hline
+\multicolumn{3}{|c|}{\textbf{Features de Agregação e Velocidade}} \\ \hline
+velocity\_6h & Velocidade de aplicações nas últimas 6 horas & float \\ \hline
+velocity\_24h & Velocidade de aplicações nas últimas 24 horas & float \\ \hline
+velocity\_4w & Velocidade de aplicações nas últimas 4 semanas & float \\ \hline
+zip\_count\_4w & Contagem de aplicações no CEP nas últimas 4 semanas & int \\ \hline
+bank\_branch\_count\_8w & Contagem de agências bancárias nas últimas 8 semanas & int \\ \hline
+date\_of\_birth\_distinct\_emails\_4w & E-mails distintos com mesma data de nascimento (4 semanas) & int \\ \hline
+device\_distinct\_emails\_8w & E-mails distintos no mesmo dispositivo (8 semanas) & int \\ \hline
+device\_fraud\_count & Contagem de fraudes no dispositivo & int \\ \hline
+\multicolumn{3}{|c|}{\textbf{Histórico do Cliente}} \\ \hline
+credit\_risk\_score & Score de risco de crédito & float \\ \hline
+bank\_months\_count & Meses de relacionamento com o banco & int \\ \hline
+prev\_address\_months\_count & Meses no endereço anterior & int \\ \hline
+current\_address\_months\_count & Meses no endereço atual & int \\ \hline
+session\_length\_in\_minutes & Duração da sessão em minutos & float \\ \hline
+keep\_alive\_session & Se a sessão foi mantida ativa & int \\ \hline
+\multicolumn{3}{|c|}{\textbf{Metadados Temporais}} \\ \hline
+month & Mês da aplicação (0--7, fevereiro a setembro) & int \\ \hline
+\end{tabularx}
+\caption{Features do dataset BAF}
+\label{tab:baf_features}
+\end{table}
+
+As features capturam uma variedade ampla de informações relevantes para detecção de fraudes: dados do solicitante, informações da aplicação, verificações de validade, métricas de velocidade (que detectam atividade suspeita em janelas temporais), e histórico do cliente. Valores ausentes em certas features são codificados como $-1$ no dataset.
+
+\subsection{Desbalanceamento de Classes}
+
+Uma característica fundamental do dataset BAF é o severo desbalanceamento de classes, característico de cenários reais de detecção de fraudes. A taxa de fraude varia entre 0,85\% e 1,5\% das instâncias ao longo dos diferentes meses, com valores mais altos nos meses posteriores \cite{jesus2022baf}. Este desbalanceamento implica que aproximadamente 98,9\% das instâncias são aplicações legítimas e apenas 1,1\% são fraudulentas.
+
+Este cenário de desbalanceamento extremo apresenta desafios específicos para o treinamento de modelos de ML:
+
+\begin{itemize}
+    \item \textbf{Métricas tradicionais são insuficientes}: Acurácia simples é enganosa, pois um modelo que classifica todas as instâncias como legítimas alcançaria $\approx$98,9\% de acurácia.
+    \item \textbf{Métrica de produção}: Conforme proposto pelos autores do BAF \cite{jesus2022baf}, a métrica principal é o TPR (\textit{True Positive Rate}) no ponto de operação de 5\% de FPR (\textit{False Positive Rate}), que é tipicamente imposta por clientes no domínio de detecção de fraudes, pois equilibra a detecção de fraude com a manutenção de baixo atrito para clientes legítimos.
+    \item \textbf{Impacto no Aprendizado Federado}: O desbalanceamento deve ser tratado de forma consistente entre os clientes. No particionamento IID balanceado adotado neste trabalho, cada cliente recebe a mesma proporção de classes do dataset original, e o parâmetro \texttt{scale\_pos\_weight} é utilizado para compensar o desbalanceamento durante o treinamento local.
+\end{itemize}
+
+\subsection{Estratégia de Divisão Temporal}
+
+O dataset BAF utiliza uma estratégia de divisão temporal, aproveitando a coluna \texttt{month} que identifica o mês de cada aplicação (0 a 7, correspondendo a fevereiro a setembro). No artigo original \cite{jesus2022baf}, os autores adotam uma divisão em 2 conjuntos: treino (meses 0--5) e teste (meses 6--7), apontando a adição de um conjunto de validação como extensão futura. Neste trabalho, estendemos a divisão para 3 conjuntos, seguindo essa recomendação:
+
+\begin{itemize}
+    \item \textbf{Treino}: Primeiros 6 meses de dados (meses 0--5, fevereiro a julho), com aproximadamente 600.000 amostras
+    \item \textbf{Validação}: Mês 6 (agosto), com aproximadamente 150.000 amostras, utilizado para ajuste de hiperparâmetros e seleção de limiar de decisão
+    \item \textbf{Teste}: Mês 7 (setembro), com aproximadamente 150.000 amostras, utilizado exclusivamente para avaliação final do modelo
+\end{itemize}
+
+Esta divisão temporal é preferida à divisão aleatória porque dados mais recentes tendem a ser mais fiéis à distribuição dos dados quando modelos são colocados em produção. Além disso, esta abordagem captura a dinâmica temporal inerente ao domínio de fraudes, onde fraudadores adaptam seus comportamentos ao longo do tempo para evadir detecção --- um fenômeno conhecido como \textit{adversarial classification} \cite{jesus2022baf}.
 
 \subsection{Pré-processamento}
 
-\subsubsection{Tratamento de Valores Ausentes}
+O pré-processamento dos dados do BAF para os experimentos de Aprendizado Federado segue um pipeline estruturado implementado na classe \texttt{DataPreprocessor} do módulo \texttt{data/processing.py}.
 
-\subsubsection{Normalização e Padronização}
+\subsubsection{Limpeza dos Dados}
 
-\subsubsection{Codificação de Variáveis Categóricas}
+A primeira etapa do pipeline consiste na limpeza dos dados brutos. Valores codificados como $-1$ no dataset original são substituídos por \texttt{NaN} para permitir tratamento adequado de valores ausentes. Em seguida, são removidas as colunas \texttt{prev\_address\_months\_count}, \texttt{intended\_balcon\_amount} e \texttt{device\_fraud\_count}, identificadas como pouco informativas ou potencialmente problemáticas. Linhas com valores ausentes são descartadas, e a coluna \texttt{velocity\_24h} é removida por alta correlação com outras features de velocidade. Os valores \texttt{NaN} remanescentes nas features numéricas são preenchidos com a mediana calculada exclusivamente nos dados de treino.
 
-\subsection{Particionamento dos Dados}
+\subsubsection{Engenharia de Features}
 
-\subsubsection{Particionamento IID}
+Para melhorar a capacidade preditiva dos modelos, são criadas mais de 20 novas features derivadas dos dados originais. Entre as principais, destacam-se: codificação por frequência de \texttt{device\_os} e \texttt{source}; razões de velocidade entre janelas temporais (\texttt{velocity\_6h / velocity\_4w}); Z-scores mensais para features de velocidade e contagem; interações entre idade e renda (\texttt{income} $\times$ \texttt{customer\_age}); categorização de faixa etária em 3 grupos (jovem, adulto, sênior); combinações de status de emprego com quartil de renda; e transformações logarítmicas de features com distribuição assimétrica. Também é criada uma flag binária \texttt{age\_above\_50} utilizada posteriormente na avaliação de \textit{fairness}.
 
-\subsubsection{Particionamento non-IID}
+\subsubsection{Codificação e Preparação Final}
+
+A coluna \texttt{fraud\_bool} é extraída como variável alvo ($y$), e a coluna \texttt{month} é utilizada exclusivamente para a divisão temporal. As features categóricas --- incluindo as originais (\texttt{payment\_type}, \texttt{employment\_status}, \texttt{housing\_status}, \texttt{source}, \texttt{device\_os}) e as criadas na engenharia de features (\texttt{age\_group}, \texttt{employment\_income\_cat}, \texttt{credit\_limit\_bucket}) --- são codificadas utilizando \textit{One-Hot Encoding} com o parâmetro \texttt{drop='if\_binary'}, ajustado apenas nos dados de treino e aplicado aos conjuntos de validação e teste. As features numéricas são utilizadas em suas escalas originais, sem normalização adicional, uma vez que modelos baseados em árvore são invariantes a transformações monotônicas nas features.
+
+\subsection{Particionamento dos Dados para Federated Learning}
+
+\subsubsection{Estratégia de Particionamento IID Balanceado}
+
+O particionamento dos dados de treino entre os clientes federados segue uma estratégia IID (\textit{Independent and Identically Distributed}) balanceada, implementada na classe \texttt{DataPartitioner}. Nesta abordagem, as amostras fraudulentas e legítimas são separadas e distribuídas uniformemente entre os clientes, garantindo que cada participante receba uma proporção equivalente de ambas as classes. Este balanceamento é importante dado o severo desbalanceamento do dataset BAF, pois evita que algum cliente receba proporcionalmente mais ou menos amostras de fraude que os demais.
+
+O processo consiste em separar os índices das amostras por classe (fraude e legítima), embaralhar aleatoriamente cada grupo, dividir cada grupo em partes iguais correspondentes ao número de clientes, e concatenar as partições de cada classe para formar o conjunto de dados de cada cliente. Desta forma, todos os clientes possuem aproximadamente a mesma taxa de fraude do dataset global.
+
+\textbf{Características da distribuição para FL}:
+\begin{itemize}
+    \item \textbf{Total de dados de treino}: $\approx$600.000 amostras (meses 0--5)
+    \item \textbf{Validação}: $\approx$150.000 amostras (mês 6), conjunto centralizado utilizado pelo servidor
+    \item \textbf{Teste}: $\approx$150.000 amostras (mês 7), avaliação final
+    \item \textbf{Clientes}: Configurável (padrão: 3 clientes)
+    \item \textbf{Desbalanceamento de classes}: Tratado via parâmetro \texttt{scale\_pos\_weight} nos modelos, calculado como a razão entre amostras negativas e positivas
+\end{itemize}
