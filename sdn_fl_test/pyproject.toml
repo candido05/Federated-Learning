@@ -1,0 +1,19 @@
+[project]
+name = "xgboost_sdn"
+version = "1.0.0"
+description = "XGBoost Federated Learning para GNS3"
+dependencies = [
+    "flwr",
+    "xgboost",
+    "scikit-learn",
+    "numpy",
+]
+
+[tool.flwr.app]
+# Define os pontos de entrada para o servidor e cliente
+server = "server:app"
+client = "client:app"
+
+[tool.flwr.federations.local-simulation]
+# Configuração para testes rápidos
+options.num-supernodes = 3

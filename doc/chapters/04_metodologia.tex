@@ -1,89 +1,74 @@
 \section{METODOLOGIA}
 
-\subsection{Visão Geral da Solução Proposta}
+\subsection{Visão Geral da Solução}
 
-Este trabalho propõe uma solução de Aprendizado Federado para detecção de fraudes bancárias utilizando modelos baseados em árvore de decisão. A abordagem consiste em treinar modelos XGBoost \cite{chen2016xgboost}, LightGBM \cite{ke2017lightgbm} e CatBoost \cite{prokhorenkova2018catboost} de forma distribuída, onde cada cliente (representando uma instituição financeira ou filial) mantém seus dados localmente e colabora no treinamento de um modelo global através do framework Flower \cite{flower2020}. Esta arquitetura permite que múltiplas instituições se beneficiem de um modelo mais robusto e generalizável, treinado em dados diversos, sem comprometer a privacidade dos dados sensíveis dos clientes bancários \cite{yang2019fl, kennedy2025financial}.
+Este trabalho propõe um sistema de Aprendizado Federado para detecção de fraudes bancárias usando modelos baseados em árvore. A ideia central é que cada participante (representando uma instituição financeira ou filial) mantém seus dados localmente e colabora no treinamento de um modelo global por meio do framework Flower \cite{flower2020}. Ao final, todos os participantes se beneficiam de um modelo treinado sobre dados mais diversos, sem que nenhum deles precise compartilhar informações sensíveis dos seus clientes \cite{yang2019fl, kennedy2025financial}.
 
-A escolha por modelos de \textit{Gradient Boosting} em detrimento de redes neurais profundas é fundamentada em três argumentos principais documentados na literatura. Primeiro, conforme demonstrado por Cheng et al. \cite{cheng2021secureboost} com o SecureBoost, modelos baseados em árvore podem atingir precisão comparável ao treinamento centralizado (aproximadamente 90\% em benchmarks de fraude) enquanto preservam a privacidade. Segundo, Li et al. \cite{li2023fedtree} mostraram que sistemas de árvore otimizados são ordens de magnitude mais eficientes que implementações baseadas em redes neurais, aspecto crítico para detecção de fraude em tempo real. Terceiro, conforme argumentado por Liu et al. \cite{liu2024survey}, modelos de árvore oferecem resistência natural superior a ataques de vazamento de informação (\textit{Deep Leakage}) \cite{zhu2019deepleakage}, uma vez que suas atualizações são baseadas em histogramas e divisões, dificultando a reconstrução dos dados originais.
+A escolha por XGBoost \cite{chen2016xgboost}, LightGBM \cite{ke2017lightgbm} e CatBoost \cite{prokhorenkova2018catboost} em vez de redes neurais profundas é sustentada por três razões documentadas na literatura. Primeiro, modelos de boosting podem atingir precisão comparável ao treinamento centralizado em dados federados enquanto preservam a privacidade, conforme demonstrado pelo SecureBoost \cite{cheng2021secureboost}. Segundo, eles são ordens de magnitude mais eficientes do ponto de vista computacional do que redes neurais, o que é crítico para detecção de fraude em tempo real \cite{li2023fedtree}. Terceiro, ao transmitir informações sobre divisões e histogramas em vez de gradientes brutos, eles são naturalmente mais resistentes a ataques de reconstrução de dados do que redes neurais \cite{liu2024survey, zhu2019deepleakage}.
 
-O sistema avalia duas estratégias de agregação distintas --- Bagging e Cíclica --- para determinar qual abordagem produz os melhores resultados no domínio de detecção de fraudes em abertura de contas bancárias, utilizando o dataset BAF \cite{jesus2022baf} como base experimental.
+O sistema avalia duas estratégias de combinação de modelos --- Bagging e Cíclica --- para identificar qual abordagem produz os melhores resultados no domínio de detecção de fraudes em abertura de contas bancárias, usando o dataset BAF \cite{jesus2022baf} como base experimental.
 
 \subsection{Arquitetura do Sistema}
 
-A arquitetura do sistema segue o paradigma cliente-servidor característico do Aprendizado Federado Horizontal (HFL), conforme categorizado por Yang et al. \cite{yang2019fl}. No HFL, os participantes compartilham o mesmo espaço de atributos mas possuem amostras diferentes --- exatamente o cenário de instituições financeiras que coletam os mesmos tipos de dados de clientes distintos.
+A arquitetura segue o modelo cliente-servidor do Aprendizado Federado Horizontal \cite{yang2019fl}, cenário em que todos os participantes coletam o mesmo tipo de dados (solicitações de abertura de conta) sobre pessoas diferentes. O servidor central coordena o treinamento: inicializa o modelo global, seleciona participantes para cada rodada, distribui os parâmetros do modelo, combina as atualizações recebidas e avalia o modelo global usando um conjunto de validação centralizado \cite{bonawitz2019scale}.
 
-O servidor central é responsável por coordenar o treinamento federado, executando as seguintes funções: inicializar o modelo global, selecionar clientes para participação em cada rodada, distribuir os parâmetros do modelo, agregar as atualizações recebidas dos clientes utilizando a estratégia escolhida (Bagging ou Cíclica), e avaliar o modelo global utilizando um conjunto de teste centralizado \cite{bonawitz2019scale}. Esta arquitetura segue as melhores práticas estabelecidas por Bonawitz et al. \cite{bonawitz2019scale} para sistemas FL em escala.
+Cada cliente representa um participante do sistema com uma fatia local do dataset BAF, simulando diferentes instituições bancárias colaborando sem compartilhar dados. Os dados são divididos em particionamento IID equilibrado: todos os clientes recebem aproximadamente o mesmo número de amostras com a mesma distribuição de fraudes. Essa escolha permite isolar o efeito das estratégias de combinação sem que diferenças nos dados de cada cliente influenciem os resultados --- o foco principal do trabalho. Cenários com dados heterogêneos entre participantes são apontados como direção para trabalhos futuros \cite{zhu2021noniid, li2020fedprox}. A comunicação entre clientes e servidor é gerenciada pelo Flower, que cuida de toda a parte de transmissão e sincronização dos modelos \cite{flower2020}.
 
-Cada cliente representa um participante do sistema federado que possui uma partição local do dataset BAF, simulando diferentes instituições bancárias que colaboram no treinamento de um modelo global. Neste trabalho, os dados são distribuídos entre os clientes seguindo um particionamento IID (\textit{Independent and Identically Distributed}) balanceado, garantindo que cada cliente receba uma amostra representativa e estatisticamente similar do dataset. A comunicação entre clientes e servidor é mediada pelo Flower, que abstrai os detalhes de serialização, transmissão e sincronização através do protocolo gRPC \cite{flower2020}.
+\subsection{Divisão dos Dados entre Participantes}
 
-\subsection{Particionamento dos Dados entre Clientes}
-
-A partição do dataset BAF entre os clientes federados segue uma estratégia IID (\textit{Independent and Identically Distributed}) balanceada. Nesta abordagem, o conjunto de treinamento é dividido de forma uniforme e aleatória entre os clientes, de modo que cada partição preserva a mesma distribuição estatística do dataset original --- incluindo a proporção de classes (fraude vs. legítimo) e a distribuição dos atributos.
-
-A escolha pelo particionamento IID balanceado é motivada pelo objetivo de isolar o impacto do treinamento federado em si, sem a influência adicional da heterogeneidade estatística entre clientes. Esta abordagem permite quantificar com maior precisão a diferença de desempenho entre o treinamento federado e o centralizado, estabelecendo uma \textit{baseline} controlada. De acordo com a literatura \cite{zhu2021noniid, li2020fedprox, shi2023survey}, cenários com dados Non-IID introduzem desafios adicionais como divergência entre modelos locais e degradação da convergência, que poderiam dificultar a análise comparativa entre os algoritmos de \textit{Gradient Boosting} --- foco principal deste trabalho. A investigação de cenários Non-IID, onde diferentes clientes possuem perfis de dados heterogêneos simulando instituições bancárias com características distintas \cite{huang2022fairness}, é apontada como direção relevante para trabalhos futuros.
+Os dados de treino são divididos de forma equilibrada entre os clientes. As amostras de cada classe (fraude e legítima) são separadas, embaralhadas e distribuídas igualmente, garantindo que cada participante receba a mesma proporção de fraudes do conjunto original. Assim, todos os clientes têm aproximadamente a mesma taxa de fraude que o dataset global, sem nenhum desvio que pudesse interferir na comparação entre algoritmos.
 
 \subsection{Implementação dos Modelos Federados}
 
-A implementação dos modelos federados segue rigorosamente o padrão de cliente-servidor do framework Flower \cite{flower2020}, onde cada algoritmo (XGBoost, LightGBM e CatBoost) possui um cliente customizado que implementa a interface abstrata \texttt{Client} do Flower. Esta abordagem é consistente com as práticas recomendadas por Li et al. \cite{li2020practical} para implementação de \textit{Gradient Boosting} federado.
-
-Todos os algoritmos implementados neste trabalho compartilham uma estrutura comum de dois métodos obrigatórios:
+Cada algoritmo (XGBoost, LightGBM e CatBoost) foi implementado como um cliente Flower, seguindo a interface padrão do framework \cite{flower2020}. Todos os três compartilham a mesma estrutura com dois métodos obrigatórios:
 
 \begin{itemize}
-    \item \texttt{fit(ins: FitIns) -> FitRes}: Realiza o treinamento local utilizando os dados do cliente e retorna o modelo atualizado. Este método implementa a otimização local descrita por McMahan et al. \cite{mcmahan2017fedavg}.
+    \item \texttt{fit(ins: FitIns) -> FitRes}: Realiza o treinamento local usando os dados do cliente e retorna o modelo atualizado. A partir da segunda rodada, o treinamento começa a partir do modelo global recebido, acumulando conhecimento progressivamente.
 
-    \item \texttt{evaluate(ins: EvaluateIns) -> EvaluateRes}: Avalia o modelo global com os dados locais do cliente, retornando métricas de desempenho para agregação no servidor.
+    \item \texttt{evaluate(ins: EvaluateIns) -> EvaluateRes}: Avalia o modelo global nos dados locais do cliente, retornando métricas de desempenho para acompanhamento pelo servidor.
 \end{itemize}
 
-A serialização dos modelos varia entre os algoritmos devido às diferenças em suas APIs:
+A transmissão dos modelos entre clientes e servidor requer convertê-los para sequências de bytes. Cada algoritmo tem uma forma diferente de fazer isso: o XGBoost serializa diretamente em formato JSON via \texttt{save\_raw()}; o LightGBM e o CatBoost exigem gravação em arquivos temporários. Para unificar o processo, todos os modelos são convertidos e transmitidos como sequências de bytes (arrays NumPy), garantindo compatibilidade com o protocolo do Flower.
 
-\begin{itemize}
-    \item \textbf{XGBoost}: Permite serialização direta e eficiente em formato JSON através do método \texttt{save\_raw()}, alinhado com a abordagem do SecureBoost \cite{cheng2021secureboost}.
+O treinamento incremental --- ou \textit{warm start} --- é suportado pelos três algoritmos. A partir da segunda rodada, o treinamento não começa do zero, mas continua a partir do modelo global recebido do servidor, preservando o que foi aprendido nas rodadas anteriores \cite{konecny2016communication}.
 
-    \item \textbf{LightGBM}: Requer serialização baseada em arquivos temporários, conforme limitações da API. A eficiência é mantida pela natureza compacta dos histogramas \cite{ke2017lightgbm}.
+\subsection{Estratégias de Combinação de Modelos}
 
-    \item \textbf{CatBoost}: Similar ao LightGBM, utiliza arquivos temporários para serialização no formato binário proprietário \texttt{.cbm}.
-\end{itemize}
+Para os três algoritmos, foram implementadas estratégias personalizadas que herdam da classe \texttt{Strategy} do Flower, dando controle completo sobre como os modelos locais são combinados.
 
-O treinamento incremental é suportado por todos os três algoritmos através do mecanismo de \textit{warm start} --- técnica na qual o treinamento local não é iniciado do zero, mas sim a partir de um modelo previamente treinado, que serve como ponto de partida. A partir da segunda rodada de comunicação, o treinamento local continua a partir do modelo global recebido, preservando o conhecimento acumulado nas rodadas anteriores. Esta característica é fundamental para a convergência eficiente em sistemas federados \cite{konecny2016communication}.
+\textbf{Estratégia Bagging}: Todos os clientes treinam em paralelo a partir do mesmo ponto de partida. Na primeira rodada, cada cliente treina do zero; nas rodadas seguintes, o servidor seleciona o melhor modelo da rodada anterior (baseado no TPR de validação) e o envia para todos os clientes como ponto de partida. Ao final de cada rodada, cada cliente retorna seu modelo atualizado, e o servidor mantém o melhor deles para a próxima rodada. A predição do modelo global é feita pela média das probabilidades calculadas por cada modelo local.
 
-\subsection{Estratégias de Agregação}
-
-Para os três algoritmos, foram implementadas estratégias customizadas que herdam da classe \texttt{Strategy} do Flower, permitindo controle completo sobre a seleção de clientes, distribuição de modelos e agregação de resultados.
-
-\textbf{Estratégia Bagging}: Múltiplos clientes treinam modelos independentemente em paralelo, e os resultados são agregados por média das probabilidades preditas (\textit{ensemble averaging}). Na primeira rodada, os clientes treinam do zero; nas rodadas seguintes, o servidor seleciona o melhor modelo da rodada anterior (baseado no TPR de validação) e o envia como ponto de partida (\textit{warm start}) para todos os clientes, permitindo refinamento progressivo. Esta abordagem explora a diversidade dos dados locais para criar um modelo global mais robusto, análoga ao Bootstrap Aggregating original mas adaptada para o contexto federado \cite{liu2020fedforest}.
-
-\textbf{Estratégia Cíclica}: Os clientes treinam sequencialmente em ordem circular, onde cada cliente recebe o modelo do cliente anterior via \textit{warm start} e adiciona árvores incrementalmente. Para controlar o sobreajuste inerente ao treinamento sequencial, é aplicado um \textit{learning rate decay} exponencial com fator $0{,}85^{r-1}$, onde $r$ é o número da rodada. Este mecanismo reduz progressivamente a taxa de aprendizado nas rodadas posteriores, permitindo ajustes mais finos e estabilizando a convergência \cite{li2020practical}.
+\textbf{Estratégia Cíclica}: Os clientes treinam sequencialmente em ordem circular. O modelo percorre os clientes um a um --- cada cliente acrescenta suas árvores ao modelo recebido e passa o resultado para o próximo. Um ciclo completo (todos os clientes treinando uma vez) equivale a uma rodada de aprendizado colaborativo.
 
 \subsection{Métricas de Avaliação}
 
-As métricas são calculadas após cada rodada de treinamento, incluindo:
+As métricas principais são calculadas ao final de cada rodada no conjunto de validação e, ao fim do experimento, no conjunto de teste:
 
 \begin{itemize}
-    \item \textbf{Acurácia}: Proporção de predições corretas sobre o total.
-    \item \textbf{Precisão}: Proporção de verdadeiros positivos entre todas as predições positivas.
-    \item \textbf{Recall (Sensibilidade)}: Proporção de fraudes corretamente identificadas.
-    \item \textbf{F1-Score}: Média harmônica entre precisão e recall.
-    \item \textbf{AUC-ROC}: Área sob a curva ROC, métrica robusta para dados desbalanceados.
+    \item \textbf{TPR @ 5\% FPR}: Taxa de fraudes detectadas no ponto de operação em que a taxa de falsos positivos é exatamente 5\%, conforme a métrica de referência do BAF \cite{jesus2022baf}.
+    \item \textbf{AUC-ROC}: Área sob a curva ROC, que mede a capacidade de discriminação do modelo independentemente do limiar de decisão escolhido.
+    \item \textbf{FPR Ratio}: Razão entre as taxas de falso positivo dos dois grupos demográficos ($\min/\max$). Valores próximos a 1,0 indicam que os dois grupos são tratados de forma igualitária.
+    \item \textbf{Tempo de execução}: Duração total da simulação, em segundos.
+    \item \textbf{Dados transferidos}: Volume total de dados transmitidos entre clientes e servidor ao longo de todas as rodadas.
 \end{itemize}
 
-Conforme recomendado por Chai et al. \cite{chai2024survey}, a avaliação de sistemas FL não deve focar apenas na utilidade (performance do modelo), mas também na eficiência de comunicação e convergência. Este trabalho reporta o número de rodadas de comunicação necessárias para atingir diferentes níveis de performance, permitindo análise do trade-off entre acurácia e custo de comunicação.
+Os resultados são avaliados em dois regimes de limiar, conforme definido no artigo do BAF \cite{jesus2022baf}. No regime \textbf{standard}, um único limiar global é calibrado para que a taxa de falsos positivos no conjunto completo seja exatamente 5\%. No regime \textbf{fair}, dois limiares independentes são calibrados separadamente: um para o grupo com idade $\geq 50$ e outro para o grupo com idade $< 50$, cada um ajustado para 5\% de FPR no respectivo grupo. Esse ajuste equaliza as taxas de falso positivo entre os dois grupos sem modificar o modelo treinado \cite{hardt2016equality}.
 
-Para avaliação de \textit{fairness}, adotamos a métrica de \textit{FPR Ratio} definida no artigo do dataset BAF \cite{jesus2022baf}, que mede a razão entre as taxas de falso positivo (FPR) de diferentes grupos demográficos --- no caso, grupos etários definidos pelo atributo protegido \texttt{customer\_age}. Um \textit{FPR Ratio} próximo a 1,0 indica tratamento equitativo, ou seja, que clientes legítimos de ambos os grupos possuem probabilidade similar de serem incorretamente classificados como fraudulentos. O artigo do BAF avalia dois regimes de limiar de decisão: o \textit{standard}, que utiliza um único limiar global calibrado para 5\% de FPR, e o \textit{fair}, que aplica limiares independentes por grupo demográfico, cada um calibrado para 5\% de FPR no respectivo grupo, equalizando efetivamente as taxas de falso positivo entre grupos.
-
-\subsection{Tecnologias Utilizadas}
+\subsection{Ferramentas Utilizadas}
 
 \begin{table}[H]
 \centering
 \begin{tabularx}{\textwidth}{|l|X|}
 \hline
 \bf Componente & \bf Tecnologia \\ \hline
-Framework FL & Flower 1.6+ \cite{flower2020} \\ \hline
+Framework Federado & Flower 1.6+ \cite{flower2020} \\ \hline
 Modelos & XGBoost \cite{chen2016xgboost}, LightGBM \cite{ke2017lightgbm}, CatBoost \cite{prokhorenkova2018catboost} \\ \hline
-Linguagem & Python 3.9+ \\ \hline
+Linguagem & Python 3.12.3 \\ \hline
 Comunicação & gRPC (Protocol Buffers) \\ \hline
 Dataset & Bank Account Fraud (BAF) \cite{jesus2022baf} \\ \hline
 Processamento de Dados & pandas, NumPy, scikit-learn \\ \hline
-Métricas de Fairness & FPR Ratio (\textit{Predictive Equality}) \cite{jesus2022baf} \\ \hline
+Otimização de Hiperparâmetros & Optuna \\ \hline
+Métrica de Equidade & FPR Ratio \cite{jesus2022baf} \\ \hline
 \end{tabularx}
 \caption{Tecnologias utilizadas no projeto}
 \label{tab:tecnologias}
@@ -91,6 +76,4 @@ Métricas de Fairness & FPR Ratio (\textit{Predictive Equality}) \cite{jesus2022
 
 \subsection{Limitações Metodológicas}
 
-É importante reconhecer as limitações desta abordagem metodológica. Conforme documentado por Wei et al. \cite{wei2020privacy}, existe um trade-off inerente entre privacidade e utilidade em sistemas federados. Este trabalho não implementa técnicas adicionais de privacidade como Agregação Segura \cite{bonawitz2017secagg} ou Privacidade Diferencial \cite{geyer2017differential}, focando na avaliação de performance dos modelos de árvore em si. A implementação de camadas adicionais de privacidade é deixada para trabalhos futuros.
-
-Adicionalmente, o cenário de simulação utiliza particionamento IID balanceado, que não captura a heterogeneidade estatística (Non-IID) presente em cenários reais onde diferentes instituições possuem perfis de clientes distintos \cite{zhu2021noniid}. Além disso, a simulação não replica completamente os desafios de sistemas de produção em escala, como latência de rede variável, falhas de comunicação e ataques adversariais \cite{miao2022byzantine}.
+É importante reconhecer as limitações desta abordagem. O particionamento equilibrado entre clientes não captura a heterogeneidade presente em cenários reais onde diferentes instituições têm perfis distintos de clientes \cite{zhu2021noniid}. A simulação também não replica completamente os desafios de sistemas em produção em escala, como latência variável, falhas de comunicação e participantes mal-intencionados \cite{miao2022byzantine}. Por fim, o sistema não implementa técnicas adicionais de privacidade como Combinação Segura \cite{bonawitz2017secagg} ou Privacidade Diferencial \cite{geyer2017differential}, focando exclusivamente na avaliação de desempenho e equidade dos algoritmos.

@@ -1,0 +1,164 @@
+============================================================
+  GUIA: CONFIGURACAO E EXECUCAO NO WSL
+  Federated Learning SDN Test
+============================================================
+
+
+1. CRIAR AMBIENTE VIRTUAL (APENAS NA PRIMEIRA VEZ)
+---------------------------------------------------
+
+IMPORTANTE: o venv DEVE ficar no filesystem Linux (~/),
+NAO no /mnt/c/ (Windows). Isso evita erros de I/O do Ray/Flower.
+
+    # Abrir terminal WSL
+    wsl
+
+    # Criar pasta para o venv no filesystem Linux
+    mkdir -p ~/sdn-fl-env
+    python3 -m venv ~/sdn-fl-env/venv
+
+    # Ativar o venv
+    source ~/sdn-fl-env/venv/bin/activate
+
+    # Atualizar pip
+    pip install --upgrade pip
+
+    # Instalar dependencias
+    pip install -r /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test/requirements.txt
+
+
+2. ATIVAR O AMBIENTE (TODA VEZ QUE ABRIR O WSL)
+------------------------------------------------
+
+    source ~/sdn-fl-env/venv/bin/activate
+
+
+3. NAVEGAR ATE A PASTA DO PROJETO
+----------------------------------
+
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+
+
+4. EXECUTAR COM BAGGING (todos os modelos + datasets)
+-----------------------------------------------------
+
+    bash run_bagging.sh
+
+    Isso roda automaticamente:
+    - breast_cancer x xgboost (20 rounds, 20 epocas, 3 clientes)
+    - breast_cancer x lightgbm
+    - breast_cancer x catboost
+    - digits x xgboost
+    - digits x lightgbm
+    - digits x catboost
+
+    Total: 6 experimentos sequenciais com estrategia BAGGING.
+
+
+5. EXECUTAR COM CYCLING (todos os modelos + datasets)
+-----------------------------------------------------
+
+    bash run_cycling.sh
+
+    Mesmo que acima, mas com estrategia CYCLING (1 cliente por round).
+    Total: 6 experimentos sequenciais.
+
+
+6. EXECUTAR UM EXPERIMENTO ESPECIFICO (manual)
+-----------------------------------------------
+
+    Se quiser rodar apenas 1 combinacao, abra 4 terminais WSL:
+
+    # Terminal 1 - Servidor
+    source ~/sdn-fl-env/venv/bin/activate
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+    python server.py --strategy bagging --dataset breast_cancer --model xgboost
+
+    # Terminal 2 - Cliente 0
+    source ~/sdn-fl-env/venv/bin/activate
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+    python client.py --client-id 0 --dataset breast_cancer --model xgboost
+
+    # Terminal 3 - Cliente 1
+    source ~/sdn-fl-env/venv/bin/activate
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+    python client.py --client-id 1 --dataset breast_cancer --model xgboost
+
+    # Terminal 4 - Cliente 2
+    source ~/sdn-fl-env/venv/bin/activate
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+    python client.py --client-id 2 --dataset breast_cancer --model xgboost
+
+
+7. ONDE FICAM OS RESULTADOS
+----------------------------
+
+    output/
+        breast_cancer_xgboost_bagging/results.json
+        breast_cancer_lightgbm_bagging/results.json
+        breast_cancer_catboost_bagging/results.json
+        digits_xgboost_bagging/results.json
+        ...
+
+    plots/
+        convergence_breast_cancer_xgboost_bagging.png
+        convergence_digits_lightgbm_cycling.png
+        dashboard_bagging.png
+        dashboard_cycling.png
+        ...
+
+
+8. PARAMETROS DISPONIVEIS
+--------------------------
+
+    Servidor (server.py):
+        --strategy      bagging ou cycling (obrigatorio)
+        --dataset       breast_cancer ou digits (padrao: todos)
+        --model         xgboost, lightgbm ou catboost (padrao: todos)
+        --rounds        numero de rounds globais (padrao: 20)
+        --num-clients   numero de clientes (padrao: 3)
+        --address       IP:porta do servidor (padrao: 0.0.0.0:8080)
+
+    Cliente (client.py):
+        --client-id     ID do cliente: 0, 1 ou 2 (obrigatorio)
+        --dataset       mesmo dataset do servidor (obrigatorio)
+        --model         mesmo modelo do servidor (obrigatorio)
+        --server        IP:porta do servidor (padrao: 127.0.0.1:8080)
+        --num-clients   total de clientes (padrao: 3)
+        --local-epochs  epocas locais de boosting (padrao: 20)
+
+
+9. PARA USAR NO GNS3 (SDN)
+----------------------------
+
+    A unica mudanca e trocar os IPs:
+
+    # VM Servidor (ex: 10.0.0.1)
+    python server.py --strategy bagging --address 0.0.0.0:8080
+
+    # VM Cliente 0 (ex: 10.0.0.2)
+    python client.py --client-id 0 --server 10.0.0.1:8080 --dataset breast_cancer --model xgboost
+
+    # VM Cliente 1 (ex: 10.0.0.3)
+    python client.py --client-id 1 --server 10.0.0.1:8080 --dataset breast_cancer --model xgboost
+
+    # VM Cliente 2 (ex: 10.0.0.4)
+    python client.py --client-id 2 --server 10.0.0.1:8080 --dataset breast_cancer --model xgboost
+
+    O Flower cuida de toda a comunicacao gRPC pela rede SDN.
+
+
+10. RESUMO RAPIDO
+-----------------
+
+    # Ativar venv + ir para pasta
+    source ~/sdn-fl-env/venv/bin/activate
+    cd /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/sdn_fl_test
+
+    # Rodar tudo com Bagging
+    bash run_bagging.sh
+
+    # Rodar tudo com Cycling
+    bash run_cycling.sh
+
+============================================================

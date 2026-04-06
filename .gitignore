@@ -192,3 +192,6 @@ baf_data_&_code/catboost_info/
 
 # Logs
 logs/
+
+images/
+experiments/

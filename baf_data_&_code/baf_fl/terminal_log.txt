@@ -1,0 +1,1417 @@
+(venv) candi@BOOK-LMMT83SVGU:/mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code$ python -m baf_fl.main
+################################################################################
+#                    FEDERATED LEARNING COM FLOWER                    #
+#               BANK ACCOUNT FRAUD DETECTION (CORRIGIDO)               #
+################################################################################
+
+Correcoes implementadas:
+  1. fl.simulation.start_simulation (motor oficial)
+  2. Warm Start para Cycling (transferencia de conhecimento)
+  3. Post-Processing com Limiares por Grupo (Fairness = 1.0)
+  4. Serializacao correta: parameters_to_ndarrays / ndarrays_to_parameters
+  5. Optuna FEDERADO: cada cliente otimiza localmente, parametros agregados
+============================================================
+CARREGAMENTO E LIMPEZA DOS DADOS
+============================================================
+Dataset carregado: 1,000,000 linhas x 32 colunas
+Linhas removidas: 359
+Dataset apos limpeza: 999,641 linhas x 28 colunas
+
+============================================================
+FEATURE ENGINEERING
+============================================================
+Features criadas. Total de colunas: 49
+
+============================================================
+DIVISAO TEMPORAL
+============================================================
+Treino (Meses 0-5): 794,680 (1.03% fraudes)
+Validacao (Mes 6): 108,132 (1.34% fraudes)
+Teste (Mes 7): 96,829 (1.47% fraudes)
+
+============================================================
+ENCODING
+============================================================
+Features encoded: 99
+
+Scale pos weight: 96.53
+
+============================================================
+PARTICIONAMENTO PARA CLIENTES
+============================================================
+Cliente 0: 264,894 amostras (2,716 fraudes, 1.03%)
+Cliente 1: 264,893 amostras (2,716 fraudes, 1.03%)
+Cliente 2: 264,893 amostras (2,716 fraudes, 1.03%)
+
+======================================================================
+OTIMIZACAO FEDERADA DE HIPERPARAMETROS
+======================================================================
+  - 3 clientes
+  - 15 trials por cliente
+  - 33% dos dados de cada cliente
+  - Learning rate maximo: 0.05
+
+>>> Cliente 0: Rodando Optuna localmente...
+    Usando 88,298 amostras (33% dos dados)
+    [XGBoost] Otimizando...
+    [XGBoost] TPR@5%FPR: 0.4948, LR: 0.0835
+    [LightGBM] Otimizando...
+    [LightGBM] TPR@5%FPR: 0.4658, LR: 0.0270
+    [CatBoost] Otimizando...
+    [CatBoost] TPR@5%FPR: 0.4865, LR: 0.0303
+
+>>> Cliente 1: Rodando Optuna localmente...
+    Usando 88,297 amostras (33% dos dados)
+    [XGBoost] Otimizando...
+    [XGBoost] TPR@5%FPR: 0.4921, LR: 0.0634
+    [LightGBM] Otimizando...
+    [LightGBM] TPR@5%FPR: 0.4810, LR: 0.0212
+    [CatBoost] Otimizando...
+    [CatBoost] TPR@5%FPR: 0.4914, LR: 0.0410
+
+>>> Cliente 2: Rodando Optuna localmente...
+    Usando 88,297 amostras (33% dos dados)
+    [XGBoost] Otimizando...
+    [XGBoost] TPR@5%FPR: 0.4859, LR: 0.2786
+    [LightGBM] Otimizando...
+    [LightGBM] TPR@5%FPR: 0.4817, LR: 0.0354
+    [CatBoost] Otimizando...
+    [CatBoost] TPR@5%FPR: 0.4983, LR: 0.0332
+
+>>> Agregando parametros dos clientes (mediana)...
+
+    XGBoost:
+      max_depth: [3, 3, 3] -> 3
+      learning_rate: ['0.0835', '0.0634', '0.2786'] -> 0.08353087730210133
+      n_estimators: [140, 169, 67] -> 140
+      min_child_weight: [4, 7, 10] -> 7
+      subsample: ['0.8304', '0.9913', '0.9306'] -> 0.9306058177789605
+      colsample_bytree: ['0.8789', '0.9635', '0.8955'] -> 0.8955474112084283
+
+    LightGBM:
+      max_depth: [4, 11, 3] -> 4
+      learning_rate: ['0.0270', '0.0212', '0.0354'] -> 0.027010527749605478
+      n_estimators: [141, 151, 165] -> 151
+      num_leaves: [79, 61, 23] -> 61
+      min_child_samples: [80, 12, 14] -> 14
+      subsample: ['0.6799', '0.9373', '0.6579'] -> 0.6798695128633439
+      colsample_bytree: ['0.8057', '0.9396', '0.7333'] -> 0.8056937753654446
+
+    CatBoost:
+      depth: [4, 4, 4] -> 4
+      learning_rate: ['0.0303', '0.0410', '0.0332'] -> 0.03323040121428476
+      iterations: [285, 120, 230] -> 230
+      l2_leaf_reg: ['0.0000', '0.0000', '0.0243'] -> 8.498547779430848e-07
+
+>>> Aplicando freio de seguranca (LR max = 0.05)...
+    XGBoost: 0.0835 -> 0.05
+
+>>> Parametros finais agregados:
+    XGBoost:  LR=0.0500, depth=3, n_est=140
+    LightGBM: LR=0.0270, depth=4, n_est=151
+    CatBoost: LR=0.0332, depth=4, iter=230
+
+######################################################################
+# MODELO: XGBOOST
+######################################################################
+
+------------------------------------------------------------
+ESTRATEGIA: BAGGING (XGBOOST)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+[2026-03-16 15:11:17,041 I 385 385] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,302 I 5656 5656] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,593 I 5680 5680] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,651 I 5697 5697] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,758 I 5682 5682] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,808 I 5654 5654] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,849 I 5688 5688] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,859 I 5699 5699] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,902 I 5686 5686] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:20,981 I 5692 5692] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,145 I 5684 5684] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,166 I 5681 5681] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,190 I 5691 5691] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,210 I 5690 5690] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,340 I 5685 5685] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,353 I 5693 5693] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,368 I 5695 5695] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,369 I 5689 5689] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,486 I 5696 5696] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,624 I 5687 5687] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,629 I 5698 5698] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:21,654 I 5694 5694] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:22,003 I 5683 5683] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+BAGGING - Round 1
+============================================================
+  [Servidor] Clientes iniciarao do zero
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=5687)     [Cliente 1] XGBoost - do zero
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(raylet) [2026-03-16 15:11:28,882 I 7336 7336] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:11:30,505 I 7391 7391] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)     [Cliente 2] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=5694)     [Cliente 2] XGBoost - do zero
+(ClientAppActor pid=5694) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5694)             entirely in future versions of Flower.
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5687)     [Cliente 1] Treino TPR=0.5615 | Val TPR=0.4969 | Tempo=10.3s
+(ClientAppActor pid=5694)     [Cliente 2] Treino TPR=0.5475 | Val TPR=0.4914 | Tempo=12.3s
+(ClientAppActor pid=5683) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5683)             entirely in future versions of Flower.
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)     [Cliente 0] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=5683)     [Cliente 0] XGBoost - do zero
+  [Servidor] Agregando 3 modelos...
+(ClientAppActor pid=5683)     [Cliente 0] Treino TPR=0.5228 | Val TPR=0.4928 | Tempo=7.2s
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Melhor modelo selecionado (metric=0.4969)
+
+  [Servidor] BAGGING Round 1:
+    Threshold Unico:     TPR=0.4983, Fairness=0.3446
+    Threshold por Grupo: TPR=0.4748, Fairness=0.9015
+
+============================================================
+BAGGING - Round 2
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=5683) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5683)             entirely in future versions of Flower.
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)     [Cliente 2] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5683)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=5683)     [Cliente 2] WARM START XGBoost
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)     [Cliente 0] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5694)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=5694)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=5694) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5694)             entirely in future versions of Flower.
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5683)     [Cliente 2] Treino TPR=0.5644 | Val TPR=0.5128 | Tempo=7.6s
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 1] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5687)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=5687)     [Cliente 1] WARM START XGBoost
+(ClientAppActor pid=5694)     [Cliente 0] Treino TPR=0.5361 | Val TPR=0.5183 | Tempo=7.8s
+  [Servidor] Agregando 3 modelos...
+(ClientAppActor pid=5687)     [Cliente 1] Treino TPR=0.5961 | Val TPR=0.5093 | Tempo=8.6s
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5183)
+
+  [Servidor] BAGGING Round 2:
+    Threshold Unico:     TPR=0.5169, Fairness=0.3358
+    Threshold por Grupo: TPR=0.4921, Fairness=0.9978
+
+============================================================
+BAGGING - Round 3
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 0] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5687)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=5687)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)     [Cliente 2] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5694)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=5694)     [Cliente 2] WARM START XGBoost
+(ClientAppActor pid=5694) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5694)             entirely in future versions of Flower.
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5687)     [Cliente 0] Treino TPR=0.5600 | Val TPR=0.5183 | Tempo=7.2s
+(ClientAppActor pid=5683) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5683)             entirely in future versions of Flower.
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)     [Cliente 1] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5683)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=5683)     [Cliente 1] WARM START XGBoost
+(ClientAppActor pid=5694)     [Cliente 2] Treino TPR=0.5637 | Val TPR=0.5238 | Tempo=8.1s
+(ClientAppActor pid=5683)     [Cliente 1] Treino TPR=0.5957 | Val TPR=0.5231 | Tempo=7.2s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5238)
+
+  [Servidor] BAGGING Round 3:
+    Threshold Unico:     TPR=0.5238, Fairness=0.3249
+    Threshold por Grupo: TPR=0.5059, Fairness=0.9976
+
+============================================================
+BAGGING - Round 4
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=5683) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5683)             entirely in future versions of Flower.
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)     [Cliente 1] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5683)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=5683)     [Cliente 1] WARM START XGBoost
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)     [Cliente 2] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5694)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=5694)     [Cliente 2] WARM START XGBoost
+(ClientAppActor pid=5694) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5694)             entirely in future versions of Flower.
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5683)     [Cliente 1] Treino TPR=0.5935 | Val TPR=0.5210 | Tempo=8.0s
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 0] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=5687)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=5694)     [Cliente 2] Treino TPR=0.5810 | Val TPR=0.5210 | Tempo=7.8s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 0 OK
+(ClientAppActor pid=5687)     [Cliente 0] Treino TPR=0.5659 | Val TPR=0.5266 | Tempo=8.0s
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5266)
+
+  [Servidor] BAGGING Round 4:
+    Threshold Unico:     TPR=0.5259, Fairness=0.3273
+    Threshold por Grupo: TPR=0.5135, Fairness=0.9987
+
+============================================================
+BAGGING - Round 5
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)     [Cliente 1] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5687)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=5687)     [Cliente 1] WARM START XGBoost
+(ClientAppActor pid=5687) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5687)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5687)             entirely in future versions of Flower.
+(ClientAppActor pid=5687)
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)     [Cliente 0] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5694)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=5694)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=5694) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5694)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5694)             entirely in future versions of Flower.
+(ClientAppActor pid=5694)
+(ClientAppActor pid=5687)     [Cliente 1] Treino TPR=0.5906 | Val TPR=0.5245 | Tempo=7.3s
+(ClientAppActor pid=5694)     [Cliente 0] Treino TPR=0.5810 | Val TPR=0.5252 | Tempo=7.0s
+(ClientAppActor pid=5683) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=5683)             entirely in future versions of Flower.
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)
+(ClientAppActor pid=5683)     [Cliente 2] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=5683)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=5683)     [Cliente 2] WARM START XGBoost
+(ClientAppActor pid=5683)     [Cliente 2] Treino TPR=0.5810 | Val TPR=0.5231 | Tempo=7.0s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5252)
+
+  [Servidor] BAGGING Round 5:
+    Threshold Unico:     TPR=0.5259, Fairness=0.3224
+    Threshold por Grupo: TPR=0.5141, Fairness=1.0000
+
+------------------------------------------------------------
+ESTRATEGIA: CYCLING (XGBOOST)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+(raylet) [2026-03-16 15:13:48,166 I 9810 9810] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,211 I 9820 9820] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,218 I 9819 9819] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,242 I 9818 9818] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,299 I 9817 9817] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,390 I 9821 9821] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,420 I 9815 9815] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,495 I 9842 9842] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,502 I 9827 9827] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,509 I 9824 9824] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,527 I 9828 9828] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,528 I 9826 9826] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,531 I 9850 9850] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,562 I 9825 9825] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,604 I 9822 9822] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,636 I 9813 9813] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,772 I 9809 9809] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,796 I 9823 9823] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,820 I 9849 9849] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,856 I 9816 9816] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,906 I 9835 9835] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:13:48,911 I 9851 9851] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+CYCLING - Round 1 - Cliente 0
+============================================================
+  [Servidor] Cliente 0 iniciara do zero (lr_factor=1.000)
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=9851)     [Cliente 1] XGBoost - do zero
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 1] Treino TPR=0.5615 | Val TPR=0.4969 | Tempo=9.1s
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+
+  [Servidor] CYCLING Round 1 (Cliente 0):
+    Threshold Unico:     TPR=0.4969, Fairness=0.3474
+    Threshold por Grupo: TPR=0.4886, Fairness=0.9722
+
+============================================================
+CYCLING - Round 2 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.850)
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 0] Round 2 | warm_start=True | lr_factor=0.850
+(ClientAppActor pid=9851)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=9851)     [Cliente 0] LR decay: 0.0500 -> 0.0425
+(ClientAppActor pid=9851)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 0] Treino TPR=0.5331 | Val TPR=0.5114 | Tempo=6.9s
+  [Servidor] Modelo do Cliente 0 salvo para proximo round
+
+  [Servidor] CYCLING Round 2 (Cliente 1):
+    Threshold Unico:     TPR=0.5114, Fairness=0.3394
+    Threshold por Grupo: TPR=0.4934, Fairness=0.9236
+
+============================================================
+CYCLING - Round 3 - Cliente 2
+============================================================
+  [Servidor] Enviando modelo para Cliente 2 (warm start, lr_factor=0.722)
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 2] Round 3 | warm_start=True | lr_factor=0.722
+(ClientAppActor pid=9851)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=9851)     [Cliente 2] LR decay: 0.0500 -> 0.0361
+(ClientAppActor pid=9851)     [Cliente 2] WARM START XGBoost
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 2] Treino TPR=0.5571 | Val TPR=0.5190 | Tempo=6.7s
+  [Servidor] Modelo do Cliente 2 salvo para proximo round
+
+  [Servidor] CYCLING Round 3 (Cliente 2):
+    Threshold Unico:     TPR=0.5190, Fairness=0.3339
+    Threshold por Grupo: TPR=0.5059, Fairness=0.9893
+
+============================================================
+CYCLING - Round 4 - Cliente 0
+============================================================
+  [Servidor] Enviando modelo para Cliente 0 (warm start, lr_factor=0.614)
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 1] Round 4 | warm_start=True | lr_factor=0.614
+(ClientAppActor pid=9851)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=9851)     [Cliente 1] LR decay: 0.0500 -> 0.0307
+(ClientAppActor pid=9851)     [Cliente 1] WARM START XGBoost
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 1] Treino TPR=0.5884 | Val TPR=0.5259 | Tempo=6.9s
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+
+  [Servidor] CYCLING Round 4 (Cliente 0):
+    Threshold Unico:     TPR=0.5259, Fairness=0.3241
+    Threshold por Grupo: TPR=0.5114, Fairness=0.9923
+
+============================================================
+CYCLING - Round 5 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.522)
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 0] Round 5 | warm_start=True | lr_factor=0.522
+(ClientAppActor pid=9851)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=9851)     [Cliente 0] LR decay: 0.0500 -> 0.0261
+(ClientAppActor pid=9851)     [Cliente 0] WARM START XGBoost
+(ClientAppActor pid=9851) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=9851)             entirely in future versions of Flower.
+(ClientAppActor pid=9851)
+(ClientAppActor pid=9851)     [Cliente 0] Treino TPR=0.5549 | Val TPR=0.5266 | Tempo=6.9s
+  [Servidor] Modelo do Cliente 0 salvo para proximo round
+
+  [Servidor] CYCLING Round 5 (Cliente 1):
+    Threshold Unico:     TPR=0.5266, Fairness=0.3275
+    Threshold por Grupo: TPR=0.5135, Fairness=0.9781
+
+######################################################################
+# MODELO: LIGHTGBM
+######################################################################
+
+------------------------------------------------------------
+ESTRATEGIA: BAGGING (LIGHTGBM)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+(raylet) [2026-03-16 15:14:46,748 I 13197 13197] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:46,834 I 13194 13194] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:46,949 I 13181 13181] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:46,957 I 13224 13224] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,066 I 13183 13183] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,066 I 13220 13220] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,076 I 13218 13218] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,077 I 13195 13195] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,090 I 13227 13227] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,096 I 13223 13223] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,123 I 13192 13192] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,134 I 13190 13190] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,157 I 13217 13217] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,165 I 13226 13226] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,173 I 13221 13221] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,193 I 13191 13191] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,219 I 13196 13196] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,268 I 13222 13222] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,325 I 13225 13225] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,345 I 13193 13193] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,476 I 13206 13206] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:47,492 I 13219 13219] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+BAGGING - Round 1
+============================================================
+  [Servidor] Clientes iniciarao do zero
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)     [Cliente 2] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=13222)     [Cliente 2] LightGBM - do zero
+(raylet) [2026-03-16 15:14:51,485 I 14830 14830] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:14:52,048 I 14893 14893] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(ClientAppActor pid=13225) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13225)             entirely in future versions of Flower.
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=13225)     [Cliente 1] LightGBM - do zero
+(ClientAppActor pid=13222)     [Cliente 2] Treino TPR=0.5630 | Val TPR=0.4714 | Tempo=2.2s
+(ClientAppActor pid=13225)     [Cliente 1] Treino TPR=0.5707 | Val TPR=0.4921 | Tempo=2.4s
+(ClientAppActor pid=13193) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13193)             entirely in future versions of Flower.
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)     [Cliente 0] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=13193)     [Cliente 0] LightGBM - do zero
+(ClientAppActor pid=13193)     [Cliente 0] Treino TPR=0.5324 | Val TPR=0.4921 | Tempo=2.1s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Melhor modelo selecionado (metric=0.4921)
+
+  [Servidor] BAGGING Round 1:
+    Threshold Unico:     TPR=0.5017, Fairness=0.3639
+    Threshold por Grupo: TPR=0.4914, Fairness=0.9814
+
+============================================================
+BAGGING - Round 2
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=13193) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13193)             entirely in future versions of Flower.
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)     [Cliente 1] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13193)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=13193)     [Cliente 1] WARM START LightGBM
+(ClientAppActor pid=13193)     [Cliente 1] Treino TPR=0.5685 | Val TPR=0.5121 | Tempo=2.1s
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)     [Cliente 2] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13222)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=13222)     [Cliente 2] WARM START LightGBM
+(ClientAppActor pid=13225) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13225)             entirely in future versions of Flower.
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)     [Cliente 0] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13225)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=13225)     [Cliente 0] WARM START LightGBM
+(ClientAppActor pid=13222)     [Cliente 2] Treino TPR=0.5626 | Val TPR=0.5066 | Tempo=53.9s
+  [Servidor] Agregando 3 modelos...
+(ClientAppActor pid=13225)     [Cliente 0] Treino TPR=0.5795 | Val TPR=0.4976 | Tempo=55.0s
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5121)
+
+  [Servidor] BAGGING Round 2:
+    Threshold Unico:     TPR=0.5031, Fairness=0.3451
+    Threshold por Grupo: TPR=0.4865, Fairness=0.9974
+
+============================================================
+BAGGING - Round 3
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=13225) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13225)             entirely in future versions of Flower.
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)     [Cliente 2] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13225)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=13225)     [Cliente 2] WARM START LightGBM
+(raylet) [2026-03-16 15:16:13,924 I 15350 15350] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(ClientAppActor pid=13225)     [Cliente 2] Treino TPR=0.5637 | Val TPR=0.5079 | Tempo=2.1s
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)     [Cliente 0] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13222)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=13222)     [Cliente 0] WARM START LightGBM
+(ClientAppActor pid=13193) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13193)             entirely in future versions of Flower.
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)     [Cliente 1] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13193)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=13193)     [Cliente 1] WARM START LightGBM
+(ClientAppActor pid=13222)     [Cliente 0] Treino TPR=0.5795 | Val TPR=0.5121 | Tempo=68.6s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5155)
+(ClientAppActor pid=13193)     [Cliente 1] Treino TPR=0.5976 | Val TPR=0.5155 | Tempo=69.5s
+
+  [Servidor] BAGGING Round 3:
+    Threshold Unico:     TPR=0.5121, Fairness=0.3319
+    Threshold por Grupo: TPR=0.4914, Fairness=0.9894
+
+============================================================
+BAGGING - Round 4
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=13193) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13193)             entirely in future versions of Flower.
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)     [Cliente 1] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13193)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=13193)     [Cliente 1] WARM START LightGBM
+(ClientAppActor pid=13193)     [Cliente 1] Treino TPR=0.6222 | Val TPR=0.5093 | Tempo=2.2s
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)     [Cliente 2] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13222)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=13222)     [Cliente 2] WARM START LightGBM
+(ClientAppActor pid=13225) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13225)             entirely in future versions of Flower.
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)     [Cliente 0] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13225)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=13225)     [Cliente 0] WARM START LightGBM
+(ClientAppActor pid=13222)     [Cliente 2] Treino TPR=0.5648 | Val TPR=0.5114 | Tempo=43.9s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+(ClientAppActor pid=13225)     [Cliente 0] Treino TPR=0.5700 | Val TPR=0.5121 | Tempo=45.7s
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5121)
+
+  [Servidor] BAGGING Round 4:
+    Threshold Unico:     TPR=0.5141, Fairness=0.3281
+    Threshold por Grupo: TPR=0.4969, Fairness=0.9723
+
+============================================================
+BAGGING - Round 5
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=13225) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13225)             entirely in future versions of Flower.
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)
+(ClientAppActor pid=13225)     [Cliente 1] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13225)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=13225)     [Cliente 1] WARM START LightGBM
+(ClientAppActor pid=13225)     [Cliente 1] Treino TPR=0.6189 | Val TPR=0.5135 | Tempo=2.6s
+(ClientAppActor pid=13222) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13222)             entirely in future versions of Flower.
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)
+(ClientAppActor pid=13222)     [Cliente 2] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13222)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=13222)     [Cliente 2] WARM START LightGBM
+(ClientAppActor pid=13193) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=13193)             entirely in future versions of Flower.
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)
+(ClientAppActor pid=13193)     [Cliente 0] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=13193)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=13193)     [Cliente 0] WARM START LightGBM
+(ClientAppActor pid=13193)     [Cliente 0] Treino TPR=0.5876 | Val TPR=0.5052 | Tempo=53.1s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5135)
+(ClientAppActor pid=13222)     [Cliente 2] Treino TPR=0.5608 | Val TPR=0.5107 | Tempo=54.7s
+
+  [Servidor] BAGGING Round 5:
+    Threshold Unico:     TPR=0.5141, Fairness=0.3342
+    Threshold por Grupo: TPR=0.5003, Fairness=0.9799
+
+------------------------------------------------------------
+ESTRATEGIA: CYCLING (LIGHTGBM)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+(raylet) [2026-03-16 15:19:41,928 I 17495 17495] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,070 I 17497 17497] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,149 I 17505 17505] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,156 I 17500 17500] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,164 I 17550 17550] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,168 I 17501 17501] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,179 I 17534 17534] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,211 I 17504 17504] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,224 I 17496 17496] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,274 I 17502 17502] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,298 I 17503 17503] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,311 I 17518 17518] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,333 I 17499 17499] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,339 I 17511 17511] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,365 I 17498 17498] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,367 I 17506 17506] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,431 I 17532 17532] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,450 I 17509 17509] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,461 I 17507 17507] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,644 I 17510 17510] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,653 I 17531 17531] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:19:42,681 I 17508 17508] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+CYCLING - Round 1 - Cliente 0
+============================================================
+  [Servidor] Cliente 0 iniciara do zero (lr_factor=1.000)
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=17508)     [Cliente 1] LightGBM - do zero
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+(ClientAppActor pid=17508)     [Cliente 1] Treino TPR=0.5707 | Val TPR=0.4921 | Tempo=1.9s
+
+  [Servidor] CYCLING Round 1 (Cliente 0):
+    Threshold Unico:     TPR=0.4921, Fairness=0.3473
+    Threshold por Grupo: TPR=0.4783, Fairness=0.9543
+
+============================================================
+CYCLING - Round 2 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.850)
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 2] Round 2 | warm_start=True | lr_factor=0.850
+(ClientAppActor pid=17508)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=17508)     [Cliente 2] LR decay: 0.0270 -> 0.0230
+(ClientAppActor pid=17508)     [Cliente 2] WARM START LightGBM
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+  [Servidor] Modelo do Cliente 2 salvo para proximo round
+(ClientAppActor pid=17508)     [Cliente 2] Treino TPR=0.5534 | Val TPR=0.5038 | Tempo=2.3s
+
+  [Servidor] CYCLING Round 2 (Cliente 1):
+    Threshold Unico:     TPR=0.5038, Fairness=0.3486
+    Threshold por Grupo: TPR=0.4852, Fairness=0.9962
+
+============================================================
+CYCLING - Round 3 - Cliente 2
+============================================================
+  [Servidor] Enviando modelo para Cliente 2 (warm start, lr_factor=0.722)
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 0] Round 3 | warm_start=True | lr_factor=0.722
+(ClientAppActor pid=17508)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=17508)     [Cliente 0] LR decay: 0.0270 -> 0.0195
+(ClientAppActor pid=17508)     [Cliente 0] WARM START LightGBM
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+  [Servidor] Modelo do Cliente 0 salvo para proximo round
+(ClientAppActor pid=17508)     [Cliente 0] Treino TPR=0.5342 | Val TPR=0.4997 | Tempo=2.0s
+
+  [Servidor] CYCLING Round 3 (Cliente 2):
+    Threshold Unico:     TPR=0.4997, Fairness=0.3418
+    Threshold por Grupo: TPR=0.4872, Fairness=0.9704
+
+============================================================
+CYCLING - Round 4 - Cliente 0
+============================================================
+  [Servidor] Enviando modelo para Cliente 0 (warm start, lr_factor=0.614)
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 1] Round 4 | warm_start=True | lr_factor=0.614
+(ClientAppActor pid=17508)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=17508)     [Cliente 1] LR decay: 0.0270 -> 0.0166
+(ClientAppActor pid=17508)     [Cliente 1] WARM START LightGBM
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 1] Treino TPR=0.6024 | Val TPR=0.5086 | Tempo=2.2s
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+
+  [Servidor] CYCLING Round 4 (Cliente 0):
+    Threshold Unico:     TPR=0.5086, Fairness=0.3323
+    Threshold por Grupo: TPR=0.4955, Fairness=0.9746
+
+============================================================
+CYCLING - Round 5 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.522)
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 2] Round 5 | warm_start=True | lr_factor=0.522
+(ClientAppActor pid=17508)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=17508)     [Cliente 2] LR decay: 0.0270 -> 0.0141
+(ClientAppActor pid=17508)     [Cliente 2] WARM START LightGBM
+(ClientAppActor pid=17508) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=17508)             entirely in future versions of Flower.
+(ClientAppActor pid=17508)
+(ClientAppActor pid=17508)     [Cliente 2] Treino TPR=0.5685 | Val TPR=0.5141 | Tempo=2.6s
+  [Servidor] Modelo do Cliente 2 salvo para proximo round
+
+  [Servidor] CYCLING Round 5 (Cliente 1):
+    Threshold Unico:     TPR=0.5141, Fairness=0.3376
+    Threshold por Grupo: TPR=0.4955, Fairness=0.9927
+
+######################################################################
+# MODELO: CATBOOST
+######################################################################
+
+------------------------------------------------------------
+ESTRATEGIA: BAGGING (CATBOOST)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+(raylet) [2026-03-16 15:20:13,261 I 20852 20852] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,349 I 20863 20863] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,396 I 20868 20868] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,420 I 20861 20861] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,420 I 20890 20890] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,429 I 20865 20865] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,478 I 20867 20867] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,516 I 20857 20857] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,545 I 20888 20888] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,592 I 20873 20873] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,601 I 20894 20894] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,639 I 20864 20864] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,643 I 20889 20889] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,686 I 20862 20862] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,688 I 20903 20903] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,690 I 20893 20893] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,717 I 20891 20891] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,740 I 20892 20892] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,782 I 20901 20901] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,850 I 20866 20866] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:13,859 I 20910 20910] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:14,101 I 20902 20902] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+BAGGING - Round 1
+============================================================
+  [Servidor] Clientes iniciarao do zero
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 2] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=20891)     [Cliente 2] CatBoost - do zero
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(raylet) [2026-03-16 15:20:18,067 I 22528 22528] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:20:18,944 I 22581 22581] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)     [Cliente 0] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=20892)     [Cliente 0] CatBoost - do zero
+(ClientAppActor pid=20892) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20892)             entirely in future versions of Flower.
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=20901)     [Cliente 1] CatBoost - do zero
+(ClientAppActor pid=20901) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20901)             entirely in future versions of Flower.
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20891)     [Cliente 2] Treino TPR=0.5387 | Val TPR=0.5010 | Tempo=19.2s
+(ClientAppActor pid=20892)     [Cliente 0] Treino TPR=0.5199 | Val TPR=0.4997 | Tempo=18.7s
+  [Servidor] Agregando 3 modelos...
+(ClientAppActor pid=20901)     [Cliente 1] Treino TPR=0.5563 | Val TPR=0.5093 | Tempo=16.1s
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5093)
+
+  [Servidor] BAGGING Round 1:
+    Threshold Unico:     TPR=0.5017, Fairness=0.3073
+    Threshold por Grupo: TPR=0.4845, Fairness=0.9998
+
+============================================================
+BAGGING - Round 2
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 2] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20901)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=20901)     [Cliente 2] WARM START CatBoost
+(ClientAppActor pid=20901) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20901)             entirely in future versions of Flower.
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)     [Cliente 1] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20892)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=20892)     [Cliente 1] WARM START CatBoost
+(ClientAppActor pid=20892) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20892)             entirely in future versions of Flower.
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20901)     [Cliente 2] Treino TPR=0.5563 | Val TPR=0.5210 | Tempo=18.1s
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 0] Round 2 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20891)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=20891)     [Cliente 0] WARM START CatBoost
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20892)     [Cliente 1] Treino TPR=0.5832 | Val TPR=0.5107 | Tempo=14.8s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5210)
+(ClientAppActor pid=20891)     [Cliente 0] Treino TPR=0.5331 | Val TPR=0.5114 | Tempo=13.7s
+
+  [Servidor] BAGGING Round 2:
+    Threshold Unico:     TPR=0.5114, Fairness=0.2952
+    Threshold por Grupo: TPR=0.4997, Fairness=0.9881
+
+============================================================
+BAGGING - Round 3
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 1] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20891)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=20891)     [Cliente 1] WARM START CatBoost
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)     [Cliente 0] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20892)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=20892)     [Cliente 0] WARM START CatBoost
+(ClientAppActor pid=20892) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20892)             entirely in future versions of Flower.
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20891)     [Cliente 1] Treino TPR=0.5847 | Val TPR=0.5121 | Tempo=14.2s
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 2] Round 3 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20901)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=20901)     [Cliente 2] WARM START CatBoost
+(ClientAppActor pid=20901) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20901)             entirely in future versions of Flower.
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20892)     [Cliente 0] Treino TPR=0.5376 | Val TPR=0.5217 | Tempo=13.6s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5238)
+(ClientAppActor pid=20901)     [Cliente 2] Treino TPR=0.5792 | Val TPR=0.5238 | Tempo=14.0s
+
+  [Servidor] BAGGING Round 3:
+    Threshold Unico:     TPR=0.5217, Fairness=0.2970
+    Threshold por Grupo: TPR=0.5045, Fairness=0.9996
+
+============================================================
+BAGGING - Round 4
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 2] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20901)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=20901)     [Cliente 2] WARM START CatBoost
+(ClientAppActor pid=20901) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20901)             entirely in future versions of Flower.
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)     [Cliente 0] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20892)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=20892)     [Cliente 0] WARM START CatBoost
+(ClientAppActor pid=20892) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20892)             entirely in future versions of Flower.
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 1] Round 4 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=20891)     [Cliente 1] WARM START CatBoost
+(ClientAppActor pid=20901)     [Cliente 2] Treino TPR=0.5968 | Val TPR=0.5204 | Tempo=17.8s
+(ClientAppActor pid=20892)     [Cliente 0] Treino TPR=0.5350 | Val TPR=0.5280 | Tempo=21.1s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 2 OK
+(ClientAppActor pid=20891)     [Cliente 1] Treino TPR=0.5828 | Val TPR=0.5266 | Tempo=18.0s
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5280)
+
+  [Servidor] BAGGING Round 4:
+    Threshold Unico:     TPR=0.5280, Fairness=0.3125
+    Threshold por Grupo: TPR=0.5059, Fairness=0.9210
+
+============================================================
+BAGGING - Round 5
+============================================================
+  [Servidor] Enviando melhor modelo para 3 clientes (warm start)
+(raylet) [2026-03-16 15:22:50,550 I 24515 24515] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:22:51,090 I 24570 24570] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)     [Cliente 2] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20891)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=20891)     [Cliente 2] WARM START CatBoost
+(ClientAppActor pid=20891) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20891)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20891)             entirely in future versions of Flower.
+(ClientAppActor pid=20891)
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)     [Cliente 1] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20892)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=20892)     [Cliente 1] WARM START CatBoost
+(ClientAppActor pid=20892) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20892)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20892)             entirely in future versions of Flower.
+(ClientAppActor pid=20892)
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 0] Round 5 | warm_start=True | lr_factor=1.000
+(ClientAppActor pid=20901) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=20901)             entirely in future versions of Flower.
+(ClientAppActor pid=20901)
+(ClientAppActor pid=20901)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=20901)     [Cliente 0] WARM START CatBoost
+(ClientAppActor pid=20891)     [Cliente 2] Treino TPR=0.5957 | Val TPR=0.5273 | Tempo=24.5s
+(ClientAppActor pid=20892)     [Cliente 1] Treino TPR=0.5828 | Val TPR=0.5273 | Tempo=28.5s
+  [Servidor] Agregando 3 modelos...
+  [Servidor] Modelo do Cliente 2 OK
+  [Servidor] Modelo do Cliente 1 OK
+  [Servidor] Modelo do Cliente 0 OK
+  [Servidor] Melhor modelo selecionado (metric=0.5273)
+(ClientAppActor pid=20901)     [Cliente 0] Treino TPR=0.5504 | Val TPR=0.5245 | Tempo=24.3s
+
+  [Servidor] BAGGING Round 5:
+    Threshold Unico:     TPR=0.5286, Fairness=0.3118
+    Threshold por Grupo: TPR=0.5093, Fairness=0.9992
+
+------------------------------------------------------------
+ESTRATEGIA: CYCLING (CATBOOST)
+------------------------------------------------------------
+WARNING :   DEPRECATED FEATURE: flwr.simulation.start_simulation() is deprecated.
+        Instead, use the `flwr run` CLI command to start a local simulation in your Flower app, as shown for example below:
+
+                $ flwr new  # Create a new Flower app from a template
+
+                $ flwr run  # Run the Flower app in Simulation Mode
+
+        Using `start_simulation()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+
+(raylet) [2026-03-16 15:23:47,447 I 26544 26544] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:47,487 I 26540 26540] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,023 I 26547 26547] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,034 I 26545 26545] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,046 I 26537 26537] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,373 I 26542 26542] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,591 I 26543 26543] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:48,959 I 26546 26546] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,260 I 26651 26651] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,353 I 26636 26636] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,422 I 26541 26541] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,512 I 26639 26639] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,648 I 26652 26652] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,729 I 26654 26654] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,969 I 26655 26655] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:49,980 I 26548 26548] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,014 I 26734 26734] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,075 I 26733 26733] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,208 I 26653 26653] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,492 I 26659 26659] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,652 I 26646 26646] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+(raylet) [2026-03-16 15:23:50,764 I 26638 26638] logging.cc:303: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to 3
+
+============================================================
+CYCLING - Round 1 - Cliente 0
+============================================================
+  [Servidor] Cliente 0 iniciara do zero (lr_factor=1.000)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)     [Cliente 1] Round 1 | warm_start=False | lr_factor=1.000
+(ClientAppActor pid=26646)     [Cliente 1] CatBoost - do zero
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+(ClientAppActor pid=26646)     [Cliente 1] Treino TPR=0.5563 | Val TPR=0.5093 | Tempo=15.8s
+
+  [Servidor] CYCLING Round 1 (Cliente 0):
+    Threshold Unico:     TPR=0.5093, Fairness=0.2892
+    Threshold por Grupo: TPR=0.4941, Fairness=0.9982
+
+============================================================
+CYCLING - Round 2 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.850)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)     [Cliente 0] Round 2 | warm_start=True | lr_factor=0.850
+(ClientAppActor pid=26646)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=26646)     [Cliente 0] LR decay: 0.0332 -> 0.0282
+(ClientAppActor pid=26646)     [Cliente 0] WARM START CatBoost
+  [Servidor] Modelo do Cliente 0 salvo para proximo round
+(ClientAppActor pid=26646)     [Cliente 0] Treino TPR=0.5309 | Val TPR=0.5162 | Tempo=13.8s
+
+  [Servidor] CYCLING Round 2 (Cliente 1):
+    Threshold Unico:     TPR=0.5162, Fairness=0.2862
+    Threshold por Grupo: TPR=0.4969, Fairness=0.9836
+
+============================================================
+CYCLING - Round 3 - Cliente 2
+============================================================
+  [Servidor] Enviando modelo para Cliente 2 (warm start, lr_factor=0.722)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)     [Cliente 2] Round 3 | warm_start=True | lr_factor=0.722
+(ClientAppActor pid=26646)     [Cliente 2] Modelo recebido para warm start!
+(ClientAppActor pid=26646)     [Cliente 2] LR decay: 0.0332 -> 0.0240
+(ClientAppActor pid=26646)     [Cliente 2] WARM START CatBoost
+  [Servidor] Modelo do Cliente 2 salvo para proximo round
+(ClientAppActor pid=26646)     [Cliente 2] Treino TPR=0.5596 | Val TPR=0.5217 | Tempo=14.0s
+
+  [Servidor] CYCLING Round 3 (Cliente 2):
+    Threshold Unico:     TPR=0.5217, Fairness=0.2925
+    Threshold por Grupo: TPR=0.5031, Fairness=0.9959
+
+============================================================
+CYCLING - Round 4 - Cliente 0
+============================================================
+  [Servidor] Enviando modelo para Cliente 0 (warm start, lr_factor=0.614)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)     [Cliente 1] Round 4 | warm_start=True | lr_factor=0.614
+(ClientAppActor pid=26646)     [Cliente 1] Modelo recebido para warm start!
+(ClientAppActor pid=26646)     [Cliente 1] LR decay: 0.0332 -> 0.0204
+(ClientAppActor pid=26646)     [Cliente 1] WARM START CatBoost
+  [Servidor] Modelo do Cliente 1 salvo para proximo round
+(ClientAppActor pid=26646)     [Cliente 1] Treino TPR=0.5828 | Val TPR=0.5210 | Tempo=13.8s
+
+  [Servidor] CYCLING Round 4 (Cliente 0):
+    Threshold Unico:     TPR=0.5210, Fairness=0.2948
+    Threshold por Grupo: TPR=0.5031, Fairness=0.9990
+
+============================================================
+CYCLING - Round 5 - Cliente 1
+============================================================
+  [Servidor] Enviando modelo para Cliente 1 (warm start, lr_factor=0.522)
+(ClientAppActor pid=26646) WARNING :   DEPRECATED FEATURE: `client_fn` now expects a signature `def client_fn(context: Context)`.The provided `client_fn` has signature: {'cid': <Parameter "cid: str">}. You can import the `Context` like this: `from flwr.common import Context`
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)             This is a deprecated feature. It will be removed
+(ClientAppActor pid=26646)             entirely in future versions of Flower.
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)
+(ClientAppActor pid=26646)     [Cliente 0] Round 5 | warm_start=True | lr_factor=0.522
+(ClientAppActor pid=26646)     [Cliente 0] Modelo recebido para warm start!
+(ClientAppActor pid=26646)     [Cliente 0] LR decay: 0.0332 -> 0.0173
+(ClientAppActor pid=26646)     [Cliente 0] WARM START CatBoost
+  [Servidor] Modelo do Cliente 0 salvo para proximo round
+(ClientAppActor pid=26646)     [Cliente 0] Treino TPR=0.5423 | Val TPR=0.5204 | Tempo=12.7s
+
+  [Servidor] CYCLING Round 5 (Cliente 1):
+    Threshold Unico:     TPR=0.5204, Fairness=0.2938
+    Threshold por Grupo: TPR=0.5079, Fairness=0.9941
+
+======================================================================
+AVALIACAO FINAL (TESTE - MES 7)
+======================================================================
+
+================================================================================
+RELATORIO FINAL
+================================================================================
+
+--- Threshold Unico ---
+  XGBOOST Bagging: TPR=0.5679, Fairness=0.2952
+  XGBOOST Cycling: TPR=0.5616, Fairness=0.2899
+  LIGHTGBM Bagging: TPR=0.5483, Fairness=0.3089
+  LIGHTGBM Cycling: TPR=0.5560, Fairness=0.3117
+  CATBOOST Bagging: TPR=0.5581, Fairness=0.2919
+  CATBOOST Cycling: TPR=0.5672, Fairness=0.2603
+
+--- Threshold por Grupo (Fair) ---
+  XGBOOST Bagging (Fair): TPR=0.5434, Fairness=0.9357
+  XGBOOST Cycling (Fair): TPR=0.5406, Fairness=0.8808
+  LIGHTGBM Bagging (Fair): TPR=0.5315, Fairness=0.9733
+  LIGHTGBM Cycling (Fair): TPR=0.5448, Fairness=0.9998
+  CATBOOST Bagging (Fair): TPR=0.5308, Fairness=0.9991
+  CATBOOST Cycling (Fair): TPR=0.5427, Fairness=0.9972
+
+------------------------------------------------------------
+BENCHMARK (TPR > 0.52, Fairness ~ 1.0)
+------------------------------------------------------------
+[OK] [X] XGBOOST Bagging: TPR=0.5679, Fairness=0.2952
+[OK] [OK] XGBOOST Bagging (Fair): TPR=0.5434, Fairness=0.9357
+[OK] [X] XGBOOST Cycling: TPR=0.5616, Fairness=0.2899
+[OK] [X] XGBOOST Cycling (Fair): TPR=0.5406, Fairness=0.8808
+[OK] [X] LIGHTGBM Bagging: TPR=0.5483, Fairness=0.3089
+[OK] [OK] LIGHTGBM Bagging (Fair): TPR=0.5315, Fairness=0.9733
+[OK] [X] LIGHTGBM Cycling: TPR=0.5560, Fairness=0.3117
+[OK] [OK] LIGHTGBM Cycling (Fair): TPR=0.5448, Fairness=0.9998
+[OK] [X] CATBOOST Bagging: TPR=0.5581, Fairness=0.2919
+[OK] [OK] CATBOOST Bagging (Fair): TPR=0.5308, Fairness=0.9991
+[OK] [X] CATBOOST Cycling: TPR=0.5672, Fairness=0.2603
+[OK] [OK] CATBOOST Cycling (Fair): TPR=0.5427, Fairness=0.9972
+
+======================================================================
+GERANDO GRAFICOS DE DESEMPENHO
+======================================================================
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/convergence_tpr.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/convergence_fairness.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/comparison_tpr.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/comparison_fairness.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/tradeoff_performance_fairness.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/strategy_comparison.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/threshold_impact.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/heatmap_results.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/roc_auc_comparison.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/cycling_client_contribution.png
+  [Plot] Salvo: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/summary_dashboard.png
+
+  [Plot] Todos os graficos salvos em: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/images/20260316_140203/
+
+[ExperimentLogger] Resultados salvos em: /mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code/experiments/20260316_140203/
+  - experiment.json (dados completos)
+  - simulations_summary.csv
+  - <modelo>_<estrategia>_rounds.csv (metricas por rodada)
+  - <modelo>_<estrategia>_client_rounds.csv (metricas por cliente)
+  - summary.txt (relatorio legivel)
+(venv) candi@BOOK-LMMT83SVGU:/mnt/c/Users/candi/OneDrive/Desktop/Federated-Learning/baf_data_&_code$

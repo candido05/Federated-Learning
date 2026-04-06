@@ -1,0 +1,25 @@
+# Federated Learning - BAF Dataset
+# Requisitos para o notebook bank_account_fraud_federated_learning.ipynb
+
+# Computação científica
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Visualização
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Modelos de Árvore
+xgboost>=2.0.0
+lightgbm>=4.0.0
+catboost>=1.2.0
+
+# Federated Learning
+flwr[simulation]>=1.6.0
+
+# Utilitários
+jupyter>=1.0.0
+notebook>=6.5.0

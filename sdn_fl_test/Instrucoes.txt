@@ -1,0 +1,402 @@
+================================================================================
+ INSTRUÇÕES - Federated Learning com XGBoost + Flower no WSL
+ Projeto: sdn_fl_test
+================================================================================
+
+Este guia cobre:
+  1. Setup do ambiente no WSL
+  2. Teste local (tudo no mesmo WSL)
+  3. Criação de VMs no WSL para simular nós distribuídos
+  4. Teste distribuído entre VMs
+  5. Arquitetura do projeto
+  6. Troubleshooting
+
+================================================================================
+ 1. SETUP DO AMBIENTE NO WSL
+================================================================================
+
+1.1 Verificar se o WSL está instalado
+--------------------------------------
+No PowerShell (Windows):
+
+    wsl --list --verbose
+
+Se não tiver WSL instalado:
+
+    wsl --install
+
+Isso instala Ubuntu por padrão. Reinicie o computador após instalar.
+
+
+1.2 Instalar dependências no WSL
+---------------------------------
+Abra o terminal do WSL (Ubuntu) e execute:
+
+    # Atualizar pacotes
+    sudo apt update && sudo apt upgrade -y
+
+    # Instalar Python e ferramentas
+    sudo apt install -y python3 python3-pip python3-venv git net-tools
+
+    # Verificar versão do Python (precisa ser 3.9+)
+    python3 --version
+
+
+1.3 Setup do projeto
+---------------------
+    # Navegar até a pasta do projeto (ajuste o caminho se necessário)
+    cd /mnt/c/Users/SEU_USUARIO/sdn_fl_test
+
+    # OU copiar para o home do WSL
+    cp -r /mnt/c/Users/SEU_USUARIO/sdn_fl_test ~/sdn_fl_test
+    cd ~/sdn_fl_test
+
+    # Criar ambiente virtual
+    python3 -m venv venv
+    source venv/bin/activate
+
+    # Instalar dependências
+    pip install -r requirements.txt
+
+    # Verificar instalação
+    python3 -c "import flwr; print(f'Flower: {flwr.__version__}')"
+    python3 -c "import xgboost; print(f'XGBoost: {xgboost.__version__}')"
+
+
+================================================================================
+ 2. TESTE LOCAL (tudo no mesmo WSL)
+================================================================================
+
+Este é o primeiro teste para validar que o código funciona.
+
+    cd ~/sdn_fl_test
+    source venv/bin/activate
+
+    # Dar permissão de execução ao script
+    chmod +x test_local.sh
+
+    # Executar teste
+    ./test_local.sh
+
+O que acontece:
+  - O servidor inicia em 0.0.0.0:8080
+  - Aguarda 15s para baixar o dataset Higgs (~2GB no primeiro uso)
+  - 2 clientes conectam em 127.0.0.1:8080
+  - Executa 3 rounds de treinamento federado
+  - Imprime AUC a cada round
+
+Se funcionar, você verá algo como:
+  [Round 1] Avaliação centralizada - AUC: 0.75xx
+  [Round 2] Avaliação centralizada - AUC: 0.76xx
+  [Round 3] Avaliação centralizada - AUC: 0.77xx
+
+NOTA: O primeiro download do dataset Higgs pode demorar bastante.
+      Nos testes subsequentes ele já estará em cache.
+
+
+Teste manual (alternativa ao script):
+---------------------------------------
+Terminal 1 (servidor):
+    python3 server.py --address 0.0.0.0:8080 --rounds 3 --min-clients 2
+
+Terminal 2 (cliente 0):
+    python3 client.py --server 127.0.0.1:8080 --partition-id 0 --num-partitions 2
+
+Terminal 3 (cliente 1):
+    python3 client.py --server 127.0.0.1:8080 --partition-id 1 --num-partitions 2
+
+
+================================================================================
+ 3. CRIAÇÃO DE VMs NO WSL PARA SIMULAR NÓS DISTRIBUÍDOS
+================================================================================
+
+Existem duas abordagens para simular múltiplos nós no WSL:
+
+
+--- OPÇÃO A: Múltiplas distribuições WSL (RECOMENDADO) ---
+
+O WSL permite ter várias instâncias Linux. Cada uma terá seu próprio IP.
+
+3A.1 Exportar a distro base (com tudo já instalado)
+     Isso evita reinstalar dependências em cada VM.
+
+No PowerShell:
+    # Exportar a distro Ubuntu configurada
+    wsl --export Ubuntu C:\wsl_backups\ubuntu_fl_base.tar
+
+3A.2 Importar como novas instâncias
+
+No PowerShell:
+    # Criar instância para o servidor
+    wsl --import FL-Server C:\wsl_vms\fl-server C:\wsl_backups\ubuntu_fl_base.tar
+
+    # Criar instância para cliente 1
+    wsl --import FL-Client1 C:\wsl_vms\fl-client1 C:\wsl_backups\ubuntu_fl_base.tar
+
+    # Criar instância para cliente 2
+    wsl --import FL-Client2 C:\wsl_vms\fl-client2 C:\wsl_backups\ubuntu_fl_base.tar
+
+3A.3 Acessar cada instância
+
+No PowerShell (abra um terminal para cada):
+    wsl -d FL-Server
+    wsl -d FL-Client1
+    wsl -d FL-Client2
+
+3A.4 Verificar IPs
+
+Dentro de cada VM:
+    hostname -I
+
+Anote os IPs. Exemplo:
+    FL-Server:  172.28.xxx.10
+    FL-Client1: 172.28.xxx.11
+    FL-Client2: 172.28.xxx.12
+
+IMPORTANTE: No WSL2, todas as distros compartilham o mesmo adaptador
+de rede virtual (vEthernet). Isso significa que elas CONSEGUEM se
+comunicar entre si pelo IP sem configuração extra.
+
+3A.5 Testar conectividade entre VMs
+
+No FL-Client1:
+    ping <IP_DO_FL-Server>
+    nc -zv <IP_DO_FL-Server> 8080    # (após iniciar o servidor)
+
+
+--- OPÇÃO B: Containers Docker dentro do WSL (ALTERNATIVA) ---
+
+Se preferir isolamento mais forte via Docker:
+
+3B.1 Instalar Docker no WSL
+
+    sudo apt install -y docker.io
+    sudo systemctl start docker
+    sudo usermod -aG docker $USER
+
+3B.2 Criar Dockerfile
+
+    Crie um arquivo chamado "Dockerfile" na pasta sdn_fl_test:
+
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY . .
+
+3B.3 Build da imagem
+
+    docker build -t fl-xgboost .
+
+3B.4 Criar rede Docker (simula rede SDN)
+
+    docker network create --subnet=10.0.0.0/24 fl-network
+
+3B.5 Rodar containers
+
+    # Servidor
+    docker run --name fl-server --network fl-network --ip 10.0.0.10 \
+        fl-xgboost python server.py --address 0.0.0.0:8080 --rounds 5 --min-clients 2
+
+    # Cliente 1 (novo terminal)
+    docker run --name fl-client1 --network fl-network --ip 10.0.0.11 \
+        fl-xgboost python client.py --server 10.0.0.10:8080 --partition-id 0 --num-partitions 2
+
+    # Cliente 2 (novo terminal)
+    docker run --name fl-client2 --network fl-network --ip 10.0.0.12 \
+        fl-xgboost python client.py --server 10.0.0.10:8080 --partition-id 1 --num-partitions 2
+
+
+================================================================================
+ 4. TESTE DISTRIBUÍDO ENTRE VMs
+================================================================================
+
+Após criar as VMs (Opção A ou B), execute:
+
+4.1 No terminal do SERVIDOR (FL-Server):
+    cd ~/sdn_fl_test
+    source venv/bin/activate
+    python3 server.py \
+        --address 0.0.0.0:8080 \
+        --rounds 5 \
+        --method cyclic \
+        --min-clients 2 \
+        --centralised-eval
+
+4.2 No terminal do CLIENTE 1 (FL-Client1):
+    cd ~/sdn_fl_test
+    source venv/bin/activate
+    python3 client.py \
+        --server <IP_DO_SERVIDOR>:8080 \
+        --partition-id 0 \
+        --num-partitions 2 \
+        --method cyclic
+
+4.3 No terminal do CLIENTE 2 (FL-Client2):
+    cd ~/sdn_fl_test
+    source venv/bin/activate
+    python3 client.py \
+        --server <IP_DO_SERVIDOR>:8080 \
+        --partition-id 1 \
+        --num-partitions 2 \
+        --method cyclic
+
+SUBSTITUA <IP_DO_SERVIDOR> pelo IP real da VM do servidor.
+
+
+================================================================================
+ 5. ARQUITETURA DO PROJETO
+================================================================================
+
+sdn_fl_test/
+├── server.py                      # Servidor Flower (standalone)
+├── client.py                      # Cliente Flower (standalone)
+├── xgboost_comprehensive/
+│   ├── __init__.py
+│   └── task.py                    # Utilitários: carregamento de dados, particionamento
+├── requirements.txt               # Dependências Python
+├── test_local.sh                  # Script de teste local (1 WSL)
+├── test_distributed.sh            # Referência para teste distribuído
+└── INSTRUCOES.txt                 # Este arquivo
+
+Fluxo de comunicação:
+    Client1 ──┐
+              ├──> gRPC (TCP) ──> Flower Server ──> Agrega modelos
+    Client2 ──┘
+
+Diferenças do código original:
+  - O original usava ServerApp/ClientApp (API nova do Flower para simulação)
+  - Esta versão usa start_server/start_client (API clássica para deployment real)
+  - Argumentos via CLI (--server, --partition-id, etc.) em vez de pyproject.toml
+  - Mesmo fluxo XGBoost: treino local → serialização → agregação → redistribuição
+
+
+================================================================================
+ 6. PARÂMETROS DISPONÍVEIS
+================================================================================
+
+Servidor (server.py):
+  --address          IP:PORTA para bind (padrão: 0.0.0.0:8080)
+  --rounds           Rounds federados (padrão: 5)
+  --method           bagging ou cyclic (padrão: cyclic)
+  --min-clients      Mínimo de clientes (padrão: 2)
+  --centralised-eval Avaliação centralizada no servidor
+  --no-centralised-eval  Desativar avaliação centralizada
+
+Cliente (client.py):
+  --server               IP:PORTA do servidor (padrão: 127.0.0.1:8080)
+  --partition-id         ID da partição (obrigatório: 0, 1, 2, ...)
+  --num-partitions       Total de partições (padrão: 2)
+  --num-local-rounds     Rounds locais por round global (padrão: 1)
+  --method               bagging ou cyclic (padrão: cyclic)
+  --partitioner-type     uniform, linear, square, exponential (padrão: uniform)
+  --test-fraction        Fração de teste (padrão: 0.2)
+  --seed                 Seed de reprodutibilidade (padrão: 42)
+
+
+================================================================================
+ 7. TROUBLESHOOTING
+================================================================================
+
+PROBLEMA: "Connection refused" no cliente
+  → O servidor ainda não subiu. Aguarde mais tempo ou verifique com:
+    nc -zv <IP_SERVIDOR> 8080
+
+PROBLEMA: Servidor trava esperando clientes
+  → Verifique se --min-clients corresponde ao número de clientes que você vai iniciar.
+  → Todos os clientes precisam conectar antes do treinamento começar.
+
+PROBLEMA: "Module not found: xgboost_comprehensive"
+  → Certifique-se de que está executando a partir da pasta sdn_fl_test/:
+    cd ~/sdn_fl_test
+    python3 server.py ...
+
+PROBLEMA: Dataset demora muito para baixar
+  → O dataset Higgs tem ~2GB. Na primeira execução pode demorar.
+  → Após o download, fica em cache (~/.cache/huggingface/).
+  → Para testes rápidos sem baixar dataset, veja a seção 8.
+
+PROBLEMA: "OSError: [Errno 98] Address already in use"
+  → Porta 8080 está ocupada. Mate o processo:
+    sudo lsof -i :8080
+    kill <PID>
+  → Ou use outra porta: --address 0.0.0.0:9090
+
+PROBLEMA: VMs WSL não se comunicam
+  → Verifique se ambas estão no WSL2: wsl --list --verbose
+  → Verifique IPs: hostname -I (dentro de cada VM)
+  → Teste: ping <IP_OUTRA_VM>
+  → Se não funciona, pode ser firewall do Windows:
+    No PowerShell (admin):
+    New-NetFirewallRule -DisplayName "WSL" -Direction Inbound -InterfaceAlias "vEthernet (WSL)" -Action Allow
+
+
+================================================================================
+ 8. TESTE RÁPIDO COM DATASET SINTÉTICO (sem download)
+================================================================================
+
+Se quiser testar a comunicação FL sem esperar o download do Higgs,
+crie um arquivo test_synthetic.py na pasta sdn_fl_test:
+
+    # test_synthetic.py - Teste com dados fake
+    import numpy as np
+    import xgboost as xgb
+    import flwr as fl
+    from flwr.common import (
+        Code, EvaluateIns, EvaluateRes, FitIns, FitRes,
+        Parameters, Status, parameters_to_ndarrays, ndarrays_to_parameters,
+    )
+
+    # Gera dados sintéticos
+    np.random.seed(42)
+    X = np.random.randn(1000, 10).astype(np.float32)
+    y = (X[:, 0] > 0).astype(np.float32)
+    dtrain = xgb.DMatrix(X[:800], label=y[:800])
+    dval = xgb.DMatrix(X[800:], label=y[800:])
+
+    PARAMS = {"objective": "binary:logistic", "eval_metric": "auc", "max_depth": 3}
+
+    class SimpleClient(fl.client.Client):
+        def fit(self, ins):
+            params_list = parameters_to_ndarrays(ins.parameters)
+            if len(params_list[0]) == 0:
+                bst = xgb.train(PARAMS, dtrain, num_boost_round=5)
+            else:
+                bst = xgb.Booster(params=PARAMS)
+                bst.load_model(bytearray(params_list[0].tobytes()))
+                bst.update(dtrain, bst.num_boosted_rounds())
+            model = np.frombuffer(bst.save_raw("json"), dtype=np.uint8)
+            return FitRes(
+                status=Status(code=Code.OK, message="OK"),
+                parameters=ndarrays_to_parameters([model]),
+                num_examples=800, metrics={},
+            )
+        def evaluate(self, ins):
+            params_list = parameters_to_ndarrays(ins.parameters)
+            if len(params_list[0]) == 0:
+                return EvaluateRes(
+                    status=Status(code=Code.OK, message="Skip"),
+                    loss=1.0, num_examples=200, metrics={"auc": 0.0},
+                )
+            bst = xgb.Booster(params=PARAMS)
+            bst.load_model(bytearray(params_list[0].tobytes()))
+            res = bst.eval_set(evals=[(dval, "valid")], iteration=bst.num_boosted_rounds()-1)
+            auc = float(res.split("\t")[1].split(":")[1])
+            return EvaluateRes(
+                status=Status(code=Code.OK, message="OK"),
+                loss=1.0-auc, num_examples=200, metrics={"auc": auc},
+            )
+
+    fl.client.start_client(server_address="127.0.0.1:8080", client=SimpleClient())
+
+Para testar:
+    Terminal 1: python3 server.py --rounds 3 --min-clients 2 --no-centralised-eval
+    Terminal 2: python3 test_synthetic.py
+    Terminal 3: python3 test_synthetic.py
+
+Isso roda em segundos, sem baixar nenhum dataset.
+
+
+================================================================================
+ FIM DAS INSTRUÇÕES
+================================================================================

@@ -21,9 +21,9 @@ np.random.seed(RANDOM_STATE)
 class FederatedConfig:
     """Configuracoes do treinamento federado."""
     num_clients: int = 3
-    num_rounds: int = 15
-    local_epochs: int = 15
-    optuna_trials: int = 15
+    num_rounds: int = 50
+    local_epochs: int = 25
+    optuna_trials: int = 50
     fpr_target: float = 0.05
     random_state: int = 42
 
