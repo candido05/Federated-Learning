@@ -1,245 +1,188 @@
-# Federated Learning com Otimização SDN
+# Federated Learning com Análise de Fairness
 
-## 📚 Sobre o Projeto
+**Trabalho de Conclusão de Curso (TCC)**
+**"Otimização de Modelos de Aprendizado Federado com SDN (Software-Defined Networking)"**
 
-Este repositório contém o **Trabalho de Conclusão de Curso (TCC)** intitulado **"Otimização de Modelos de Aprendizado Federado com SDN (Software-Defined Networking)"**, desenvolvido como requisito para obtenção do grau de Bacharel em Ciência da Computação pela Universidade Federal da Paraíba (UFPB).
+Bacharel em Ciência da Computação — Universidade Federal da Paraíba (UFPB)
 
-### Autor
-**Cândido Leandro de Queiroga Bisneto**
-
-### Orientador
-**Prof. Fernando Menezes Matos**
+**Autor**: Cândido Leandro de Queiroga Bisneto
+**Orientador**: Prof. Fernando Menezes Matos
 
 ---
 
-## 🎯 Objetivos da Pesquisa
+## Sobre o Projeto
 
-O TCC tem como objetivo principal investigar e avaliar o desempenho de **modelos baseados em árvores de decisão** (XGBoost, LightGBM e CatBoost) em ambientes de **Aprendizado Federado**, com foco em:
+Este repositório contém a implementação completa de experimentos de **Aprendizado Federado (FL)** com modelos baseados em árvores de decisão aplicados ao dataset **Bank Account Fraud (BAF)**. O foco principal é avaliar como diferentes estratégias de agregação impactam a **detecção de fraude** e a **equidade (fairness)** entre grupos demográficos.
 
-1. **Implementação de modelos tree-based em FL**: Adaptar XGBoost, LightGBM e CatBoost para funcionarem no framework Flower
-2. **Otimização com SDN**: Integrar Software-Defined Networking para otimizar comunicação entre clientes e servidor
-3. **Análise de cenários IID vs non-IID**: Comparar desempenho em distribuições de dados homogêneas e heterogêneas
-4. **Avaliação de estratégias de agregação**: Testar diferentes algoritmos (FedAvg, FedProx, FedAdam, etc.)
-5. **Métricas de desempenho**: Analisar acurácia, tempo de convergência, overhead de comunicação, latência e consumo de banda
+Foram avaliados três algoritmos de boosting (**XGBoost**, **LightGBM**, **CatBoost**) com duas estratégias de agregação federada (**Bagging** e **Cyclic**), totalizando **6 configurações experimentais**, cada uma com **50 rodadas** de treinamento federado.
 
 ---
 
-## 📂 Estrutura do Repositório
+## Resultados
+
+### Desempenho Final (Teste Standard — FPR ≤ 5%)
+
+| Algoritmo | Estratégia | TPR | AUC | Bytes Transferidos | Duração |
+|-----------|-----------|-----|-----|-------------------|---------|
+| XGBoost | **Cycling** | **0.5574** | **0.8907** | 339 MB | 943s |
+| XGBoost | Bagging | 0.4671 | 0.8548 | 1.013 GB | 1079s |
+| LightGBM | **Cycling** | **0.5588** | **0.8897** | 367 MB | 764s |
+| LightGBM | Bagging | 0.4580 | 0.8474 | 1.078 GB | 2574s |
+| CatBoost | **Cycling** | **0.5518** | **0.8881** | 136 MB | 104s |
+| CatBoost | Bagging | 0.4573 | 0.8355 | 407 MB | 248s |
+
+### Com Pós-processamento de Fairness (FPR ≤ 5% por grupo)
+
+| Algoritmo | Estratégia | TPR | AUC | Fairness Score |
+|-----------|-----------|-----|-----|---------------|
+| XGBoost | Cycling | 0.5308 | 0.8907 | **0.9987** |
+| LightGBM | Cycling | 0.5350 | 0.8897 | 0.9865 |
+| CatBoost | Cycling | 0.5329 | 0.8881 | 0.9717 |
+| XGBoost | Bagging | 0.4545 | 0.8548 | 0.9884 |
+| LightGBM | Bagging | 0.4447 | 0.8474 | 0.9867 |
+| CatBoost | Bagging | 0.4489 | 0.8355 | 0.9916 |
+
+**Conclusão principal**: A estratégia **Cyclic supera Bagging** em TPR e AUC em todos os algoritmos, com consumo de comunicação 3–10x menor. O pós-processamento de fairness eleva o Fairness Score para ~0.99 em todos os casos, com custo moderado em TPR (~2–3%).
+
+---
+
+## Dataset
+
+**Bank Account Fraud (BAF)** — dataset de detecção de fraudes em abertura de contas bancárias.
+
+| Propriedade | Valor |
+|------------|-------|
+| Total de amostras | 999.641 |
+| Features | 99 |
+| Taxa de fraude (treino) | ~1,03% |
+| Partições (clientes FL) | 3 (IID) |
+| Amostras por cliente | ~264.893 |
+
+O dataset possui atributo sensível de grupo demográfico, permitindo análise de fairness via equalização da taxa de falsos positivos (FPR) por grupo.
+
+---
+
+## Estrutura do Repositório
 
 ```
 Federated-Learning/
-├── doc/                          # 📄 DOCUMENTAÇÃO DO TCC (PRINCIPAL)
-│   ├── main.tex                  # Documento principal LaTeX
-│   ├── chapters/                 # Capítulos da monografia
-│   │   ├── 01_introducao.tex
-│   │   ├── 02_revisao_literatura.tex
-│   │   ├── 03_fundamentos_teoricos.tex
-│   │   ├── 04_metodologia.tex
-│   │   ├── 05_dataset.tex
-│   │   ├── 06_config_experimental.tex
-│   │   ├── 07_resultados.tex
-│   │   ├── 08_discussao.tex
-│   │   └── 09_conclusao.tex
-│   ├── pre_textual/              # Elementos pré-textuais
-│   ├── figures/                  # Imagens e logos
-│   ├── tables/                   # Tabelas de resultados
-│   ├── tcc.cls                   # Classe LaTeX customizada
-│   └── Makefile                  # Compilação automática
+├── Code/
+│   └── tcc_code/               # Implementação principal (modular)
+│       ├── algorithms/         # Um módulo por algoritmo
+│       │   ├── xgboost/        # client.py, server.py, runner.py, __init__.py
+│       │   ├── lightgbm/       # client.py, server.py, runner.py, __init__.py
+│       │   └── catboost/       # client.py, server.py, runner.py, __init__.py
+│       ├── common/             # Utilitários compartilhados
+│       │   ├── data_processing.py   # DataProcessor (carrega e particiona BAF)
+│       │   ├── metrics.py           # Métricas, fairness, AUC
+│       │   ├── logger.py            # ExperimentLogger (JSON + TXT)
+│       │   └── utils.py             # Helpers gerais
+│       ├── main.py             # Ponto de entrada (CLI)
+│       └── requirements.txt
 │
-├── Code/                         # 💻 CÓDIGO-FONTE
-│   ├── ml_code/                  # ⭐ BASE PARA IMPLEMENTAÇÃO DO TCC
-│   │   ├── models.py             # Wrapper para modelos ML (ESTENDER AQUI!)
-│   │   ├── client.py             # Cliente Flower para ML tradicional
-│   │   ├── server.py             # Servidor FL com estratégias
-│   │   ├── data_loader.py        # Carregamento e particionamento de dados
-│   │   ├── visualization.py      # Visualização de resultados
-│   │   └── main.py               # Script principal de execução
-│   │
-│   └── nn_code/                  # Implementação com Redes Neurais (referência)
-│       ├── models.py             # ResNet, EfficientNet, MobileNet
-│       ├── client.py             # Cliente FL para PyTorch
-│       ├── server.py             # Servidor com seleção baseada em VRAM
-│       └── main.py               # Execução de experimentos
+├── experiments/                # Resultados dos experimentos executados
+│   └── experiments/
+│       ├── 20260317_112359/    # Execução 1
+│       ├── 20260323_203608/    # Execução 2
+│       └── 20260331_135100/    # Execução final (50 rodadas, todos os algoritmos)
+│           ├── summary.txt          # Relatório completo
+│           ├── simulations_summary.csv
+│           ├── {algorithm}_{strategy}_rounds.csv
+│           └── experiment.json
 │
-├── CLAUDE.md                     # Guia para Claude Code (instruções de desenvolvimento)
-└── README.md                     # Este arquivo
+├── doc/                        # Monografia em LaTeX
+│   ├── main.tex
+│   └── chapters/               # Capítulos 01–09
+│
+├── baf_data_&_code/            # Notebooks de análise exploratória do BAF
+├── dataset_fl/                 # Dataset local de veículos (experimentos anteriores)
+├── Artigos/                    # Referências bibliográficas
+└── images/                     # Figuras e gráficos
 ```
 
 ---
 
-## 🚀 Implementação Atual vs. Planejada
+## Como Executar
 
-### ✅ Código Existente (Protótipos)
+### Requisitos
 
-#### 1. `Code/ml_code/` - **Modelos Tradicionais de ML**
-Implementação base com **Flower framework** contendo:
-- **Modelos atuais**: Random Forest, SVM, Logistic Regression, KNN, Naive Bayes
-- **Dataset**: MNIST (28×28 flattened para 784 features)
-- **Estratégias FL**: FedAvg, FedProx, FedAdam, FedAdagrad, FedYogi, FedMedian
-- **Funcionalidades**: Serialização pickle, particionamento IID, visualização de resultados
-
-#### 2. `Code/nn_code/` - **Redes Neurais** (Referência)
-Implementação com PyTorch:
-- **Modelos**: ResNet, EfficientNetV2, MobileNetV3
-- **Recurso único**: Seleção de clientes baseada em VRAM disponível
-- **Uso**: Apenas como referência, não será usado no TCC
-
-### 🔨 A Ser Implementado para o TCC
-
-#### **Fase 1: Modelos Tree-Based** (PRIORITÁRIO)
-Estender `Code/ml_code/models.py` para incluir:
-```python
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
-```
-
-**Tarefas**:
-- [ ] Adicionar XGBoost ao `_create_model()` em `models.py`
-- [ ] Adicionar LightGBM ao `_create_model()` em `models.py`
-- [ ] Adicionar CatBoost ao `_create_model()` em `models.py`
-- [ ] Testar serialização pickle para cada modelo
-- [ ] Validar funcionamento em ambiente FL
-
-#### **Fase 2: Dataset Tabular**
-**Requisito**: Capítulo 5 do TCC deve ser completado primeiro
-
-**Tarefas**:
-- [ ] Selecionar dataset tabular adequado (UCI, Kaggle)
-- [ ] Documentar metadados no Capítulo 5
-- [ ] Implementar carregamento em `data_loader.py`
-- [ ] Criar particionamento non-IID (Dirichlet)
-- [ ] Validar distribuição IID vs non-IID
-
-#### **Fase 3: Integração SDN**
-**Objetivo**: Otimizar comunicação FL com políticas de QoS
-
-**Tarefas**:
-- [ ] Definir controlador SDN (OpenFlow)
-- [ ] Implementar monitoramento de rede (latência, throughput)
-- [ ] Criar políticas de priorização de tráfego FL
-- [ ] Comparar FL com/sem SDN
-- [ ] Coletar métricas de overhead de comunicação
-
-#### **Fase 4: Experimentos e Análise**
-**Tarefas**:
-- [ ] Executar grid search de hiperparâmetros
-- [ ] Rodar experimentos: {XGBoost, LightGBM, CatBoost} × {FedAvg, FedProx, FedAdam} × {IID, non-IID}
-- [ ] Coletar métricas: accuracy, precision, recall, F1, AUC-ROC
-- [ ] Análise estatística (Friedman + Nemenyi)
-- [ ] Gerar gráficos de convergência
-- [ ] Preencher Capítulo 7 (Resultados)
-
----
-
-## 🛠️ Como Executar
-
-### Pré-requisitos
 ```bash
-# Python 3.9+
-pip install flwr>=1.6.0
-pip install xgboost>=2.0.0      # A INSTALAR
-pip install lightgbm>=4.0.0     # A INSTALAR
-pip install catboost>=1.2.0     # A INSTALAR
-pip install scikit-learn>=1.3.0
-pip install numpy pandas matplotlib seaborn
+# Python 3.9+ em ambiente Linux/WSL (recomendado para Ray/Flower)
+python -m venv ~/fl-venv
+source ~/fl-venv/bin/activate
+pip install -U "flwr[simulation]"
+pip install -r Code/tcc_code/requirements.txt
 ```
 
-### Executar Protótipo Atual (ML Tradicional)
+### Executar experimentos
+
 ```bash
-cd Code/ml_code
-python main.py
+cd Code/tcc_code
 
-# Menu interativo:
-# 1. Todos os experimentos (todos modelos × todas estratégias)
-# 2. Experimentos específicos (editar main.py linhas 159-161)
-# 3. Experimento único
+# Executar um algoritmo com uma estratégia
+python main.py --algorithm xgboost --strategy cyclic
+
+# Executar todos os 6 experimentos
+python main.py --algorithm all --strategy both
+
+# Customizar parâmetros
+python main.py --algorithm lightgbm --strategy bagging \
+    --num-clients 3 --num-rounds 50 --local-rounds 25
 ```
 
-### Configuração de Experimentos
-Editar `Code/ml_code/main.py`:
-```python
-NUM_PARTITIONS = 10   # Número de clientes FL
-NUM_ROUNDS = 20       # Rodadas de treinamento
-BATCH_SIZE = 2        # Tamanho do batch local
+### Parâmetros disponíveis
 
-# Para TCC (após implementar tree-based models):
-selected_models = ["xgboost", "lightgbm", "catboost"]
-selected_strategies = ["FedAvg", "FedProx", "FedAdam"]
+| Parâmetro | Descrição | Padrão |
+|-----------|-----------|--------|
+| `--algorithm` | `xgboost`, `lightgbm`, `catboost`, `all` | `xgboost` |
+| `--strategy` | `cyclic`, `bagging`, `both` | `cyclic` |
+| `--num-clients` | Número de clientes FL | `3` |
+| `--num-rounds` | Rodadas de treinamento federado | `50` |
+| `--local-rounds` | Rodadas locais de boosting | `25` |
+| `--samples` | Amostras por cliente | `8000` |
+| `--seed` | Semente aleatória | `42` |
+
+---
+
+## Estratégias de Agregação
+
+**Cyclic (Cíclica)**: Um cliente por rodada, em sequência. O modelo global passa de cliente em cliente. Menor consumo de comunicação, melhor convergência.
+
+**Bagging**: Todos os clientes treinam em paralelo e os modelos são agregados no servidor. Maior consumo de comunicação; neste trabalho apresentou TPR e AUC inferiores ao Cyclic.
+
+---
+
+## Arquitetura Modular
+
+Cada algoritmo implementa três componentes separados:
+
+- **`client.py`**: Classe FL client (`fit` + `evaluate`), serialização do modelo
+- **`server.py`**: Função de avaliação centralizada e configuração de estratégia
+- **`runner.py`**: Orquestração do experimento (criação de clientes, execução da simulação)
+
+O módulo `common/` provê processamento de dados, cálculo de métricas (incluindo fairness), e logging estruturado em JSON.
+
+---
+
+## Dependências
+
+```
+flwr[simulation]>=1.6.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+catboost>=1.2.0
+scikit-learn>=1.3.0
+numpy>=1.24.0
+pandas>=2.0.0
+ray>=2.6.0
 ```
 
 ---
 
-## 📖 Documentação do TCC
+## Licença
 
-### Compilar LaTeX
-```bash
-cd doc
-latexmk -pdf main.tex    # Compilação completa com auto-referências
-make                     # Alternativa com Makefile
-make watch               # Auto-recompilação ao salvar arquivos
-```
-
-### Status de Preenchimento
-O documento possui **~180 placeholders** `<<...>>` a serem preenchidos. Progresso por capítulo:
-
-| Capítulo | Status | Placeholders | Prioridade |
-|----------|--------|--------------|------------|
-| 1. Introdução | 📝 Rascunho | ~15 | Média |
-| 2. Revisão de Literatura | 📝 Rascunho | ~20 | Alta |
-| 3. Fundamentos Teóricos | 📝 Rascunho | ~25 | Alta |
-| 4. Metodologia | 📝 Rascunho | ~25 | Alta |
-| 5. Dataset | ⚠️ Pendente | ~50 | **CRÍTICA** |
-| 6. Configuração Experimental | 📝 Rascunho | ~20 | Alta |
-| 7. Resultados | ⚠️ Pendente | ~30 | **CRÍTICA** |
-| 8. Discussão | 📝 Rascunho | ~10 | Média |
-| 9. Conclusão | 📝 Rascunho | ~5 | Baixa |
-
-**Legenda**: ⚠️ Pendente de dados experimentais | 📝 Estrutura criada
-
-### Encontrar Placeholders
-```bash
-cd doc
-grep -r "<<" chapters/          # Listar todos os placeholders
-grep "<<" chapters/05_dataset.tex | wc -l  # Contar no Capítulo 5
-```
+MIT License — veja [LICENSE](LICENSE).
 
 ---
 
-## 🔬 Metodologia de Pesquisa
-
-### Frameworks e Tecnologias
-- **Federated Learning**: [Flower](https://flower.dev/) 1.6+
-- **Modelos**: XGBoost, LightGBM, CatBoost
-- **Linguagem**: Python 3.9+
-- **SDN**: A definir (OpenFlow/Ryu/ONOS)
-- **Comunicação**: gRPC (padrão do Flower)
-
-### Cenários de Teste
-1. **IID (Independent and Identically Distributed)**: Dados distribuídos uniformemente entre clientes
-2. **Non-IID**: Distribuição heterogênea usando Dirichlet (α = 0.5)
-
-### Métricas de Avaliação
-- **Desempenho do Modelo**: Accuracy, Precision, Recall, F1-Score, AUC-ROC
-- **Convergência**: Número de rodadas até atingir acurácia alvo
-- **Comunicação**: Bytes transmitidos por rodada, overhead total
-- **Rede**: Latência, throughput, packet loss (com SDN)
-
----
-
-## 📅 Cronograma
-
-| Fase | Descrição | Status |
-|------|-----------|--------|
-| ✅ 1 | Estrutura do TCC e revisão bibliográfica | Concluído |
-| ✅ 2 | Protótipo com modelos tradicionais ML | Concluído |
-| 🔄 3 | Implementação de XGBoost/LightGBM/CatBoost | Em andamento |
-| ⏳ 4 | Seleção e preparação do dataset tabular | Pendente |
-| ⏳ 5 | Integração com SDN | Pendente |
-| ⏳ 6 | Execução de experimentos | Pendente |
-| ⏳ 7 | Análise de resultados e escrita final | Pendente |
-| ⏳ 8 | Defesa do TCC | Dezembro/2025 |
-
----
-
-**Última atualização**: Outubro/2025
+**Última atualização**: Março/2026
