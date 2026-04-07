@@ -16,6 +16,8 @@ Implementação completa de experimentos de **Aprendizado Federado (FL)** com mo
 
 Foram avaliados três algoritmos de boosting (**XGBoost**, **LightGBM**, **CatBoost**) com duas estratégias de agregação (**Bagging** e **Cyclic**), totalizando **6 configurações**, cada uma com **50 rodadas** de treinamento federado e **otimização de hiperparâmetros via Optuna**.
 
+> **O código relevante do TCC está em [`baf_data_&_code/baf_fl/`](baf_data_&_code/baf_fl/).** As demais pastas contêm protótipos, experimentos intermediários e código de referência desenvolvidos ao longo do trabalho.
+
 ---
 
 ## Resultados
@@ -70,39 +72,31 @@ O dataset não está incluído no repositório por ser grande demais. Consulte o
 ```
 Federated-Learning/
 │
-├── baf_data_&_code/                    # Implementação principal (BAF)
-│   ├── baf_fl/                         # Módulo FL para o dataset BAF
-│   │   ├── core/                       # Cliente FL, runner, serialização de modelos
-│   │   ├── data/                       # Processamento de dados e métricas
-│   │   ├── strategies/                 # Estratégias Bagging e Cycling
-│   │   ├── tuning/                     # Otimização de hiperparâmetros (Optuna)
-│   │   ├── reporting/                  # Logging, geração de gráficos e plots TCC
-│   │   ├── config.py                   # Configuração central
-│   │   ├── paths.py                    # Caminhos do projeto
-│   │   └── main.py                     # Ponto de entrada
-│   ├── notebooks/                      # Análise exploratória e benchmarks
-│   │   ├── bank_account_fraud_baf_benchmark.ipynb
-│   │   ├── bank_account_fraud_sota_benchmark.ipynb
-│   │   └── bank_fraud_benchmark_models.ipynb
-│   ├── BAF_paper.pdf                   # Artigo original do dataset
+├── baf_data_&_code/              ← CÓDIGO PRINCIPAL DO TCC
+│   ├── baf_fl/                   # Implementação FL para o dataset BAF
+│   │   ├── core/                 # Cliente FL, runner, serialização de modelos
+│   │   ├── data/                 # Processamento de dados e métricas
+│   │   ├── strategies/           # Estratégias Bagging e Cycling
+│   │   ├── tuning/               # Otimização de hiperparâmetros (Optuna)
+│   │   ├── reporting/            # Logging, geração de gráficos e plots TCC
+│   │   ├── config.py             # Configuração central
+│   │   ├── paths.py              # Caminhos do projeto
+│   │   └── main.py               # Ponto de entrada
+│   ├── notebooks/                # Análise exploratória e benchmarks do BAF
+│   ├── BAF_paper.pdf             # Artigo original do dataset
 │   └── requirements.txt
 │
-├── Code/
-│   ├── tcc_code/                       # Implementação modular (dataset de veículos)
-│   │   ├── algorithms/                 # XGBoost, LightGBM, CatBoost (client/server/runner)
-│   │   ├── common/                     # DataProcessor, métricas, logger, utils
-│   │   └── main.py                     # CLI unificado
-│   ├── fl_veiculos/                    # Implementação FL com dataset de veículos
-│   ├── novo_tcc_code/                  # Notebooks intermediários do BAF (v1, v2)
-│   ├── ml_code/                        # Protótipo inicial com modelos ML tradicionais
-│   └── nn_code/                        # Referência: FL com redes neurais (PyTorch)
+├── Code/                         # Protótipos e experimentos intermediários
+│   ├── tcc_code/                 # FL modular com dataset de veículos
+│   ├── fl_veiculos/              # Versão alternativa com veículos
+│   ├── novo_tcc_code/            # Notebooks intermediários do BAF (v1, v2)
+│   ├── ml_code/                  # Protótipo inicial com modelos ML tradicionais
+│   └── nn_code/                  # Referência: FL com redes neurais (PyTorch)
 │
-├── fl_simple_demo/                     # Demo mínima de Federated Learning com Flower
-├── sdn_fl_test/                        # Teste de integração SDN com FL
-├── Artigos/                            # Referências bibliográficas (PDFs)
-├── doc/                                # Monografia em LaTeX (capítulos 01–09)
-├── .gitattributes                      # Configura Python como linguagem principal
-└── .gitignore                          # Exclui datasets, experimentos e imagens
+├── fl_simple_demo/               # Demo mínima de Federated Learning com Flower
+├── sdn_fl_test/                  # Teste de integração SDN com FL
+├── Artigos/                      # Referências bibliográficas (PDFs)
+└── doc/                          # Monografia em LaTeX (capítulos 01–09)
 ```
 
 > **Não rastreados pelo git** (excluídos por tamanho ou por serem regeneráveis):
